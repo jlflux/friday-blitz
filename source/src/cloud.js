@@ -1,8 +1,8 @@
 // ---------- CLOUD: Supabase accounts, cloud saves, activity tracking, league overrides ----------
 // Fill these in from Supabase > Project Settings > API (Project URL and the anon / publishable key).
 // The anon key is meant to be public; the database's row-level security rules protect the data.
-var CLOUD_URL = "";
-var CLOUD_KEY = "";
+var CLOUD_URL = "https://hflrzcpwehqaybnflron.supabase.co";
+var CLOUD_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhmbHJ6Y3B3ZWhxYXlibmZscm9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUwMTYyMTAsImV4cCI6MjExMDU5MjIxMH0.X3nKunOqB6XrHzlxylMsPtMOPKQnS0Ei1PAaXxK2PJU";
 
 var Cloud = {
   url: "", key: "", sess: null, me: { banned: false, admin: false }, q: [], qt: 0, st: 0, dirty: {}, status: "", busy: false, ready: false, listeners: [],
