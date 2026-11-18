@@ -327,10 +327,11 @@ var FUI = {
       fCard("Feeder board", '<div class="tscroll"><table class="ft big"><tr><th>Prospect</th><th>Projected OVR</th><th>Report</th><th>Stay</th><th></th></tr>' + rows + "</table></div>");
   },
   p_staff: function () {
-    var off = FR.phase === "offseason" && OFF_STEPS[FR.off.step] === "staff", out = '<div class="ph2"><h1>Coaching Staff</h1><p>' + (off ? "Hiring window is open. Pick replacements or upgrades below." : "Staff changes happen in the offseason. Good coordinators get poached when you win.") + " Staff supplements: " + money(staffCost()) + " a year.</p></div><div class='fgrid'>";
+    var off = FR.phase === "offseason" && OFF_STEPS[FR.off.step] === "staff", out = '<div class="ph2"><h1>Coaching Staff</h1><p>' + (off ? "Hiring window is open. Pick replacements or upgrades below." : "Staff changes happen in the offseason. Good coordinators get poached when you win.") + " Staff supplements: " + money(staffCost()) + " a year.</p></div><div class='fgrid" + (off ? " g2" : "") + "'>";
+    var cur = function (s) { return s ? '<div class="stf"><b>' + fx(s.n) + "</b>" + fStars(s.r) + '<span class="pill">' + fx(s.tr) + "</span><p>" + fx(s.td) + "</p><small class='dim'>" + money(s.sal) + "/yr · " + Math.max(0, s.yrs) + " yr left</small></div>" : fEmpty("Vacant"); };
     STAFF_ROLES.forEach(function (r) { var s = FR.staff[r];
-      out += fCard(STAFF_NAME[r], s ? '<div class="stf"><b>' + fx(s.n) + "</b>" + fStars(s.r) + '<span class="pill">' + fx(s.tr) + "</span><p>" + fx(s.td) + "</p><small class='dim'>" + money(s.sal) + "/yr · " + Math.max(0, s.yrs) + " yr left</small></div>" : fEmpty("Vacant"));
-      if (off && FR.off.staffPool) out += fCard("Candidates: " + r, FR.off.staffPool[r].map(function (c, i) { return '<div class="cand"><div><b>' + fx(c.n) + "</b> " + fStars(c.r) + '<br><span class="pill">' + fx(c.tr) + "</span> <small class='dim'>" + fx(c.td) + " · " + money(c.sal) + "/yr</small></div>" + fBtn("Hire", "hire", r + "|" + i, "sm pri") + "</div>"; }).join("") || fEmpty("No candidates left."));
+      if (off && FR.off.staffPool) out += fCard(STAFF_NAME[r], '<div class="srow"><div><h4>Current</h4>' + cur(s) + "</div><div><h4>Candidates</h4>" + (FR.off.staffPool[r].map(function (c, i) { return '<div class="cand"><div><b>' + fx(c.n) + "</b> " + fStars(c.r) + '<br><span class="pill">' + fx(c.tr) + "</span> <small class='dim'>" + fx(c.td) + " · " + money(c.sal) + "/yr</small></div>" + fBtn(s ? "Replace" : "Hire", "hire", r + "|" + i, "sm pri") + "</div>"; }).join("") || fEmpty("No candidates left.")) + "</div></div>", { cls: "span2" });
+      else out += fCard(STAFF_NAME[r], cur(s));
     });
     return out + "</div>";
   },
