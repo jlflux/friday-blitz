@@ -16,9 +16,11 @@ A 16-bit high school football game with 11 players a side, a Mode 7 behind-the-t
 
 ## Controls
 - Drag anywhere (or use the arrow keys / WASD) to move the player you control. Up is always toward the top of your screen.
-- **Offense:** tap a receiver's letter button (A–E), tap the receiver on the field, or press 1–5 to throw. JUKE (or Space) dodges when you carry the ball.
-- **Defense:** before the snap, tap any defender to control him (the computer waits for you). During the play, tap a defender to switch to him, or use SWITCH (or Shift). DIVE (or Space) dives toward the ball carrier, aiming for you when you're close. You're switched to the best-placed defender automatically after a catch or a hand-off; turn this off in `?tune`.
-- **Play call:** tap a card, or press 1–6. FLIP mirrors the play. Late in a half you can kick a field goal on any down.
+- **Play call:** the panel opens at the bottom while both teams huddle. Pick a formation tab (Shotgun, Trips, Bunch, Empty, Singleback, Ace, I-Form, Pistol, Goal Line), then a play card, or take the COACH'S PICK. FLIP mirrors the play, NO HUDDLE skips the huddle, and the play clock runs (a delay of game costs 5 yards). Keys 1–9 pick cards in order.
+- **Before the snap (offense):** your receivers show numbered badges and their routes. SNAP (Space or Enter) starts the play. HOT ROUTE (H) changes one receiver's route. AUDIBLE (Y) switches to another play from the same formation or flips it. TIMEOUT (T): three per half, and it gets back the time the last play ran off.
+- **Offense, live:** tap a numbered button 1–5 (green is open, yellow is tight, red is covered), tap the receiver on the field, or press 1–5 to throw. Hold SPRINT (E) for a burst. JUKE (Space) dodges when you carry the ball. On the read option, hold SPRINT through the mesh to keep it yourself.
+- **Defense:** before the snap, tap any defender (or SWITCH) to control him; AUDIBLE switches to Cover 0 Blitz, Prevent, Man Press or Stack the Box. During the play, tap a defender or press SWITCH (Shift) to change players, and DIVE (Space) to dive at the ball carrier. You're switched to the best-placed defender automatically after a catch or a hand-off.
+- **Playbook:** 37 plays across 9 formations, including inside zone, power, counter, toss, draws, QB runs, the read option, an RPO and play action. There are 10 defensive calls: Cover 2, 3, 1 and 0, Tampa 2, Fire Zone, Man Press, Prevent, Run Stop and Stack the Box.
 - **Kick meter:** tap (or Space) when the needle is in the green.
 - **Camera:** PRO (Mode 7, the default) or CLASSIC (overhead). Change it from the pregame screen, the pause menu, or the franchise Program tab.
 

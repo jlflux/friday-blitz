@@ -20,34 +20,85 @@ function yFromOwn(tm, yd) { return tm === "H" ? 10 + yd : 110 - yd; }
 var ROLE_O = ["QB", "RB", "WR1", "WR2", "WR3", "TE", "LT", "LG", "C", "RG", "RT"];
 var ROLE_D = ["DE1", "DT1", "DT2", "DE2", "LB1", "LB2", "LB3", "CB1", "CB2", "FS", "SS"];
 var FORMS = {
-  gun:   { QB: [0, 5], RB: [2, 5.2], WR1: [-16, 0.7], WR2: [15, 0.7], WR3: [-9, 1.3], TE: [5.6, 1.2],
-           LT: [-4, 1.2], LG: [-2, 1], C: [0, 0.9], RG: [2, 1], RT: [4, 1.2] },
-  iform: { QB: [0, 1.7], RB: [0, 7], WR1: [-16, 0.7], WR2: [15, 0.7], WR3: [0, 4.4], TE: [5.6, 1.2],
-           LT: [-4, 1.2], LG: [-2, 1], C: [0, 0.9], RG: [2, 1], RT: [4, 1.2] }
+  gun:    { QB: [0, 5], RB: [2, 5.2], WR1: [-16, 0.7], WR2: [15, 0.7], WR3: [-9, 1.3], TE: [5.6, 1.2] },
+  trips:  { QB: [0, 5], RB: [-2, 5.2], WR1: [-16, 0.7], WR2: [17, 0.7], WR3: [12, 1.4], TE: [6, 1.2] },
+  bunch:  { QB: [0, 5], RB: [-2, 5.2], WR1: [-16, 0.7], WR2: [9, 0.7], WR3: [11, 1.8], TE: [9.8, 3.0] },
+  empty:  { QB: [0, 5], RB: [11, 1.3], WR1: [-16, 0.7], WR2: [16, 0.7], WR3: [-10, 1.3], TE: [7.5, 1.2] },
+  single: { QB: [0, 1.7], RB: [0, 6.6], WR1: [-16, 0.7], WR2: [15, 0.7], WR3: [-9, 1.3], TE: [5.6, 1.2] },
+  ace:    { QB: [0, 1.7], RB: [0, 6.6], WR1: [-15, 0.7], WR2: [15, 0.7], WR3: [-5.6, 1.2], TE: [5.6, 1.2] },
+  iform:  { QB: [0, 1.7], RB: [0, 7], WR1: [-16, 0.7], WR2: [15, 0.7], WR3: [0, 4.4], TE: [5.6, 1.2] },
+  pistol: { QB: [0, 3.6], RB: [0, 6.8], WR1: [-16, 0.7], WR2: [15, 0.7], WR3: [-9, 1.3], TE: [5.6, 1.2] },
+  goal:   { QB: [0, 1.7], RB: [0, 6], WR1: [-5.6, 1.2], WR2: [9, 0.7], WR3: [0, 4], TE: [5.6, 1.2] }
 };
+var OL_X = { LT: [-4, 1.2], LG: [-2, 1], C: [0, 0.9], RG: [2, 1], RT: [4, 1.2] };
+var FORM_ORDER = ["gun", "trips", "bunch", "empty", "single", "ace", "iform", "pistol", "goal"];
+var FORM_NAMES = { gun: "SHOTGUN", trips: "TRIPS", bunch: "BUNCH", empty: "EMPTY", single: "SINGLEBACK", ace: "ACE", iform: "I-FORM", pistol: "PISTOL", goal: "GOAL LINE" };
 var ROUTES = {
   go: [[0, 45]], slant: [[0, 2.5], [8, 11], [15, 18]], out: [[0, 6], [-7, 6.3], [-14, 6.6]], curl: [[0, 11], [1.2, 9.4]],
   flat: [[0, 1.5], [-7, 3.5], [-13, 4.5]], drag: [[0, 3], [13, 5], [26, 6]], post: [[0, 11], [8, 26], [13, 40]],
   seam: [[0, 35]], swing: [[-3.5, -0.8], [-8, 1], [-11, 5]], check: [[1.5, 3]], screen: [[-4.5, -1.6], [-7.5, -1.2]],
-  wheel: [[-5, 0], [-9, 4], [-10, 25]]
+  wheel: [[-5, 0], [-9, 4], [-10, 25]], dig: [[0, 10], [8, 10.5], [18, 11]], corner: [[0, 10], [-7, 19], [-11, 26]],
+  fade: [[-1, 3], [-3, 26]], bubble: [[-3, -1], [-6, 0]], qout: [[0, 4], [-6, 4.5], [-11, 4.8]], hitch: [[0, 6], [0.5, 5]],
+  cross: [[0, 7], [12, 14], [24, 17]], mesh: [[0, 2], [12, 4], [26, 5]], sit: [[0, 7], [0.5, 6]]
 };
-var STOP_ROUTES = { curl: 1, check: 1, screen: 1 };
+var STOP_ROUTES = { curl: 1, check: 1, screen: 1, hitch: 1, sit: 1 };
+var HOT_ROUTES = ["go", "slant", "out", "dig", "curl", "flat", "corner", "block"];
+function RUN(carrier, aim, hand, extra) { var r = { carrier: carrier, aim: aim, hand: hand }; if (extra) for (var k in extra) r[k] = extra[k]; return r; }
 var PLAYS = [
-  { id: "dive",   type: "run",  form: "iform", aim: 1.4, hand: 0.4, routes: { WR1: "go", WR2: "go", WR3: "lead", TE: "block" } },
-  { id: "sweep",  type: "run",  form: "iform", aim: 11, hand: 0.25, routes: { WR1: "go", WR2: "block", WR3: "lead", TE: "block" } },
-  { id: "slants", type: "pass", form: "gun", routes: { WR1: "slant", WR2: "slant", WR3: "out", TE: "flat", RB: "swing" } },
-  { id: "curl",   type: "pass", form: "gun", routes: { WR1: "curl", WR2: "curl", WR3: "flat", TE: "drag", RB: "check" } },
-  { id: "deep",   type: "pass", form: "gun", routes: { WR1: "go", WR2: "post", WR3: "curl", TE: "seam", RB: "block" } },
-  { id: "screen", type: "pass", form: "gun", routes: { WR1: "go", WR2: "go", WR3: "go", TE: "block", RB: "screen" } }
+  { id: "slants", name: "SLANTS", form: "gun", type: "pass", cat: "short", routes: { WR1: "slant", WR2: "slant", WR3: "out", TE: "flat", RB: "swing" } },
+  { id: "curl", name: "CURL FLAT", form: "gun", type: "pass", cat: "short", routes: { WR1: "curl", WR2: "curl", WR3: "flat", TE: "drag", RB: "check" } },
+  { id: "deep", name: "DEEP POST", form: "gun", type: "pass", cat: "deep", routes: { WR1: "go", WR2: "post", WR3: "curl", TE: "seam", RB: "block" } },
+  { id: "screen", name: "HB SCREEN", form: "gun", type: "pass", cat: "screen", routes: { WR1: "go", WR2: "go", WR3: "go", TE: "block", RB: "screen" } },
+  { id: "izone", name: "INSIDE ZONE", form: "gun", type: "run", cat: "run", run: RUN("RB", 1.5, 0.45), routes: { WR1: "go", WR2: "go", WR3: "hitch" } },
+  { id: "draw", name: "HB DRAW", form: "gun", type: "run", cat: "run", run: RUN("RB", 0, 1.0, { draw: true }), routes: { WR1: "go", WR2: "go", WR3: "go" } },
+  { id: "flood", name: "TRIPS FLOOD", form: "trips", type: "pass", cat: "mid", routes: { WR1: "slant", WR2: "go", WR3: "corner", TE: "flat", RB: "check" } },
+  { id: "smash", name: "SMASH", form: "trips", type: "pass", cat: "mid", routes: { WR1: "dig", WR2: "hitch", WR3: "corner", TE: "sit", RB: "swing" } },
+  { id: "bubble", name: "BUBBLE SCREEN", form: "trips", type: "pass", cat: "screen", routes: { WR1: "go", WR2: "block", WR3: "bubble", TE: "block", RB: "block" } },
+  { id: "tzone", name: "TRIPS ZONE", form: "trips", type: "run", cat: "run", run: RUN("RB", -2.5, 0.45), routes: { WR1: "go", WR2: "go", WR3: "hitch" } },
+  { id: "mesh", name: "MESH", form: "bunch", type: "pass", cat: "short", routes: { WR1: "dig", WR2: "mesh", WR3: "corner", TE: "drag", RB: "check" } },
+  { id: "bcorner", name: "BUNCH CORNER", form: "bunch", type: "pass", cat: "mid", routes: { WR1: "go", WR2: "flat", WR3: "corner", TE: "curl", RB: "check" } },
+  { id: "bdive", name: "BUNCH DIVE", form: "bunch", type: "run", cat: "run", run: RUN("RB", 1.5, 0.45), routes: { WR1: "go", WR2: "hitch" } },
+  { id: "verts", name: "FOUR VERTS", form: "empty", type: "pass", cat: "deep", routes: { WR1: "go", WR2: "go", WR3: "seam", TE: "seam", RB: "out" } },
+  { id: "qouts", name: "QUICK OUTS", form: "empty", type: "pass", cat: "short", routes: { WR1: "qout", WR2: "qout", WR3: "hitch", TE: "hitch", RB: "qout" } },
+  { id: "qbdraw", name: "QB DRAW", form: "empty", type: "run", cat: "run", run: RUN("QB", 0.5, 0.9, { draw: true }), routes: { WR1: "go", WR2: "go", WR3: "go", TE: "go", RB: "go" } },
+  { id: "dive", name: "HB DIVE", form: "single", type: "run", cat: "run", run: RUN("RB", 1.4, 0.4), routes: { WR1: "go", WR2: "go", WR3: "hitch" } },
+  { id: "counter", name: "COUNTER", form: "single", type: "run", cat: "run", run: RUN("RB", 3.5, 0.55, { counter: true }), routes: { WR1: "go", WR2: "go" } },
+  { id: "padeep", name: "PA DEEP", form: "single", type: "pass", cat: "deep", pa: true, run: RUN("RB", 1.4, 0.6), routes: { WR1: "go", WR2: "post", WR3: "dig", TE: "seam", RB: "check" } },
+  { id: "ycross", name: "Y-CROSS", form: "single", type: "pass", cat: "mid", routes: { WR1: "go", WR2: "curl", WR3: "dig", TE: "cross", RB: "check" } },
+  { id: "power", name: "POWER", form: "ace", type: "run", cat: "run", run: RUN("RB", 2.5, 0.45), routes: { WR1: "go", WR2: "go" } },
+  { id: "stretch", name: "STRETCH", form: "ace", type: "run", cat: "run", run: RUN("RB", 10, 0.3), routes: { WR1: "go", WR2: "go" } },
+  { id: "paseam", name: "PA TE SEAM", form: "ace", type: "pass", cat: "deep", pa: true, run: RUN("RB", 1.5, 0.6), routes: { WR1: "go", WR2: "dig", WR3: "flat", TE: "seam", RB: "check" } },
+  { id: "idive", name: "HB DIVE", form: "iform", type: "run", cat: "run", run: RUN("RB", 1.4, 0.4), routes: { WR1: "go", WR2: "go", WR3: "lead" } },
+  { id: "sweep", name: "TOSS SWEEP", form: "iform", type: "run", cat: "run", run: RUN("RB", 11, 0.25), routes: { WR1: "go", WR3: "lead" } },
+  { id: "powero", name: "POWER O", form: "iform", type: "run", cat: "run", run: RUN("RB", 2.5, 0.45), routes: { WR1: "go", WR2: "go", WR3: "lead" } },
+  { id: "papost", name: "PA POST", form: "iform", type: "pass", cat: "deep", pa: true, run: RUN("RB", 1.4, 0.6), routes: { WR1: "go", WR2: "post", WR3: "flat", TE: "dig", RB: "check" } },
+  { id: "readopt", name: "READ OPTION", form: "pistol", type: "run", cat: "run", run: RUN("RB", -2.5, 0.55, { option: true }), routes: { WR1: "go", WR2: "go", WR3: "hitch" } },
+  { id: "pcounter", name: "COUNTER", form: "pistol", type: "run", cat: "run", run: RUN("RB", 3.5, 0.55, { counter: true }), routes: { WR1: "go", WR2: "go" } },
+  { id: "pycross", name: "Y-CROSS", form: "pistol", type: "pass", cat: "mid", routes: { WR1: "go", WR2: "curl", WR3: "dig", TE: "cross", RB: "check" } },
+  { id: "qbpower", name: "QB POWER", form: "pistol", type: "run", cat: "run", run: RUN("QB", 1.8, 0.25), routes: { WR1: "go", WR2: "go", RB: "lead" } },
+  { id: "rposlant", name: "RPO SLANT", form: "pistol", type: "run", cat: "run", run: RUN("RB", 1.5, 0.6, { rpo: "WR3" }), routes: { WR1: "go", WR2: "go", WR3: "slant" } },
+  { id: "qbcounter", name: "QB COUNTER", form: "pistol", type: "run", cat: "run", run: RUN("QB", 3, 0.3, { counter: true }), routes: { WR1: "go", WR2: "go", RB: "lead" } },
+  { id: "sneak", name: "QB SNEAK", form: "goal", type: "run", cat: "short_yd", run: RUN("QB", 0.3, 0.08), routes: { RB: "lead", WR3: "lead" } },
+  { id: "gdive", name: "HB DIVE", form: "goal", type: "run", cat: "short_yd", run: RUN("RB", 1, 0.4), routes: { WR3: "lead" } },
+  { id: "paflat", name: "PA FLAT", form: "goal", type: "pass", cat: "short", pa: true, run: RUN("RB", 1, 0.6), routes: { WR1: "flat", WR2: "corner", WR3: "flat", TE: "sit", RB: "check" } },
+  { id: "fade", name: "FADE", form: "goal", type: "pass", cat: "short", routes: { WR1: "flat", WR2: "fade", WR3: "block", TE: "corner", RB: "block" } }
 ];
-var ZONES = { hookL: [-7, 7], mid: [0, 8], hookR: [7, 7], flatL: [-15, 5], flatR: [15, 5], deepL: [-12, 19],
-  deepR: [12, 19], deepmid: [0, 21], deepOL: [-17, 24], deepOR: [17, 24], short: [0, 4] };
+PLAYS.forEach(function (p) { if (p.run) { p.aim = p.run.aim; p.hand = p.run.hand; } else { p.aim = 1; p.hand = 99; } });
+var ZONES = { hookL: [-7, 7], mid: [0, 8], hookR: [7, 7], flatL: [-15, 5], flatR: [15, 5], deepL: [-12, 19], deepR: [12, 19], deepmid: [0, 21],
+  deepOL: [-17, 24], deepOR: [17, 24], short: [0, 4], d3L: [-16, 20], d3M: [0, 22], d3R: [16, 20], curlL: [-11, 8], curlR: [11, 8], tampa: [0, 15] };
 var DEFS = [
-  { id: "run", a: { DE1: "rush", DT1: "rush", DT2: "rush", DE2: "rush", LB1: "read", LB2: "read", LB3: "read", CB1: "man:WR1", CB2: "man:WR2", FS: "zone:deepmid", SS: "read" } },
-  { id: "cover2", a: { DE1: "rush", DT1: "rush", DT2: "rush", DE2: "rush", LB1: "zone:hookL", LB2: "zone:mid", LB3: "zone:hookR", CB1: "zone:flatL", CB2: "zone:flatR", FS: "zone:deepL", SS: "zone:deepR" } },
-  { id: "blitz", a: { DE1: "rush", DT1: "rush", DT2: "rush", DE2: "rush", LB1: "rush", LB2: "man:RB", LB3: "rush", CB1: "man:WR1", CB2: "man:WR2", FS: "man:TE", SS: "man:WR3" } },
-  { id: "prevent", a: { DE1: "rush", DT1: "rush", DT2: "zone:short", DE2: "rush", LB1: "zone:hookL", LB2: "zone:mid", LB3: "zone:hookR", CB1: "zone:deepOL", CB2: "zone:deepOR", FS: "zone:deepmid", SS: "zone:deepR" } }
+  { id: "cover2", name: "COVER 2", a: { DE1: "rush", DT1: "rush", DT2: "rush", DE2: "rush", LB1: "zone:hookL", LB2: "zone:mid", LB3: "zone:hookR", CB1: "zone:flatL", CB2: "zone:flatR", FS: "zone:deepL", SS: "zone:deepR" } },
+  { id: "cover3", name: "COVER 3", a: { DE1: "rush", DT1: "rush", DT2: "rush", DE2: "rush", LB1: "zone:curlL", LB2: "zone:mid", LB3: "zone:curlR", CB1: "zone:d3L", CB2: "zone:d3R", FS: "zone:d3M", SS: "zone:flatR" } },
+  { id: "cover1", name: "COVER 1", a: { DE1: "rush", DT1: "rush", DT2: "rush", DE2: "rush", LB1: "man:RB", LB2: "zone:mid", LB3: "man:TE", CB1: "man:WR1", CB2: "man:WR2", FS: "zone:deepmid", SS: "man:WR3" } },
+  { id: "blitz", name: "COVER 0 BLITZ", a: { DE1: "rush", DT1: "rush", DT2: "rush", DE2: "rush", LB1: "rush", LB2: "man:RB", LB3: "rush", CB1: "man:WR1", CB2: "man:WR2", FS: "man:TE", SS: "man:WR3" } },
+  { id: "tampa", name: "TAMPA 2", a: { DE1: "rush", DT1: "rush", DT2: "rush", DE2: "rush", LB1: "zone:hookL", LB2: "zone:tampa", LB3: "zone:hookR", CB1: "zone:flatL", CB2: "zone:flatR", FS: "zone:deepL", SS: "zone:deepR" } },
+  { id: "fire", name: "FIRE ZONE", a: { DE1: "zone:flatL", DT1: "rush", DT2: "rush", DE2: "rush", LB1: "rush", LB2: "zone:mid", LB3: "rush", CB1: "zone:d3L", CB2: "zone:d3R", FS: "zone:d3M", SS: "zone:flatR" } },
+  { id: "press", name: "MAN PRESS", press: true, a: { DE1: "rush", DT1: "rush", DT2: "rush", DE2: "rush", LB1: "man:RB", LB2: "zone:mid", LB3: "man:TE", CB1: "man:WR1", CB2: "man:WR2", FS: "zone:deepmid", SS: "man:WR3" } },
+  { id: "prevent", name: "PREVENT", a: { DE1: "rush", DT1: "rush", DT2: "zone:short", DE2: "rush", LB1: "zone:hookL", LB2: "zone:mid", LB3: "zone:hookR", CB1: "zone:deepOL", CB2: "zone:deepOR", FS: "zone:deepmid", SS: "zone:deepR" } },
+  { id: "run", name: "RUN STOP", a: { DE1: "rush", DT1: "rush", DT2: "rush", DE2: "rush", LB1: "read", LB2: "read", LB3: "read", CB1: "man:WR1", CB2: "man:WR2", FS: "zone:deepmid", SS: "read" } },
+  { id: "bear", name: "STACK THE BOX", box: true, a: { DE1: "rush", DT1: "rush", DT2: "rush", DE2: "rush", LB1: "rush", LB2: "read", LB3: "read", CB1: "man:WR1", CB2: "man:WR2", FS: "read", SS: "read" } }
 ];
+var DEF_AUDIBLES = ["blitz", "prevent", "press", "bear"];
 function playById(id) { for (var i = 0; i < PLAYS.length; i++) if (PLAYS[i].id === id) return PLAYS[i]; return PLAYS[0]; }
 function defById(id) { for (var i = 0; i < DEFS.length; i++) if (DEFS[i].id === id) return DEFS[i]; return DEFS[1]; }
 
@@ -58,7 +109,7 @@ function P(id) { return PARAMS[id]; }
 function newGame(home, away, opts) {
   opts = opts || {};
   var seed = opts.seed >>> 0;
-  G = { attract: !!opts.attract, franchise: !!opts.franchise, userAway: !!opts.userAway, mods: opts.mods || { off: 0, def: 0 }, homeAdv: opts.homeAdv || 0,
+  G = { tos: { H: 3, A: 3 }, pclock: 40, noHuddle: false, hot: {}, attract: !!opts.attract, franchise: !!opts.franchise, userAway: !!opts.userAway, mods: opts.mods || { off: 0, def: 0 }, homeAdv: opts.homeAdv || 0,
     home: home, away: away, rng: mulberry32(seed), seed: seed, t: 0, bot: !!opts.bot,
     score: { H: 0, A: 0 }, quarter: 1, qlen: P("quarterMinutes") * 60, clock: P("quarterMinutes") * 60, half: 1,
     ot: 0, otLeft: 0, poss: "H", los: 35, ballX: FW / 2, down: 1, toGo: 10, phase: "kickoff", phaseT: 0,
@@ -106,6 +157,8 @@ function speedOf(fp) {
   s *= (fp.tm === "H" ? P("playerSpeed") : P("cpuSpeed"));
   if (G.play && G.play.carrier === fp) s *= 0.93;
   if (fp.slowT > 0) s *= 0.55;
+  if (G.sprint && G.ctl === fp && !G.bot) s *= 1.12;
+  if (fp.jam > 0 && G.play && G.play.t < fp.jam) s *= 0.3;
   if (G.ctl === fp && !G.bot && fp.tm !== (G.play && G.play.carrier ? G.play.carrier.tm : G.poss)) s *= 1.05;
   return s;
 }
@@ -136,8 +189,10 @@ function setDrive(tm, ydOwn) {
 function beginPlayCall() {
   G.play = null; G.ctl = null; G.kick = null;
   G.players.forEach(function (p) { p.cheer = 0; });
-  G.call = { off: null, def: null, flip: false, special: null };
+  G.call = { off: null, def: null, flip: false, special: null }; G.hot = {}; G.wantSnap = false;
+  if (G.pclock === undefined || !G.keepClock) G.pclock = 40; G.keepClock = false;
   layoutFormation(null, null, false);
+  if (!G.noHuddle) layoutHuddle();
   // CPU picks immediately; user picks via UI (or bot)
   if (G.poss === "A") { var c = cpuOffenseCall(); G.call.off = c.play; G.call.flip = c.flip; G.call.special = c.special; }
   else G.call.def = cpuDefenseCall();
@@ -163,34 +218,27 @@ function launchCall() {
   startPresnap();
 }
 
-function cpuOffenseCall() {
-  var r = G.rng, dist = 100 - ydFromOwn("A", G.los);
-  var fgDist = dist + 17, k = kicker("A"), range = 30 + k.pwr * 2.6;
-  if (G.twoPt) return { play: r() < 0.5 ? "slants" : "dive", flip: r() < 0.5 };
-  if (G.down === 4) {
-    var trailing = G.score.A < G.score.H, late = G.quarter >= 4 && G.clock < 120;
-    if (fgDist <= range - 4 && !(trailing && G.score.H - G.score.A > 3 && late)) return { special: "fg" };
-    if (G.ot || (late && trailing) || (G.toGo <= 1 && ydFromOwn("A", G.los) > 45)) { /* go */ }
-    else if (!G.ot) return { special: "punt" };
-  }
-  var passW = G.toGo >= 8 ? 0.72 : G.toGo <= 2 ? 0.25 : 0.48;
-  if (G.score.A < G.score.H && G.quarter >= 4) passW += 0.2;
-  var play;
-  if (r() < passW) { var x = r(); play = x < 0.35 ? "slants" : x < 0.65 ? "curl" : x < 0.88 ? "deep" : "screen"; }
-  else play = r() < 0.55 ? "dive" : "sweep";
-  return { play: play, flip: r() < 0.5 };
+function cpuOffenseCall() { return cpuOffenseCallFor("A"); }
+function pickPlay(cat) { var list = PLAYS.filter(function (p) { return p.cat === cat; }); return list[Math.floor(G.rng() * list.length)].id; }
+function situationPlay(tm) {
+  var r = G.rng(), toGoal = 100 - ydFromOwn(tm, G.los);
+  if (G.toGo <= 1 && toGoal <= 3) return r < 0.5 ? "sneak" : "gdive";
+  if (G.toGo <= 2) return r < 0.7 ? pickPlay("run") : pickPlay("short");
+  var passW = G.toGo >= 8 ? 0.72 : 0.48; if (G.score[tm] < G.score[other(tm)] && G.quarter >= 4) passW += 0.2;
+  if (r < passW) { var x = G.rng(); return pickPlay(G.toGo >= 12 ? (x < 0.5 ? "deep" : "mid") : x < 0.45 ? "short" : x < 0.75 ? "mid" : x < 0.9 ? "deep" : "screen"); }
+  return pickPlay("run");
 }
+function coachPick() { var saveR = G.rng; G.rng = mulberry32((G.drives * 131 + G.down * 17 + Math.round(G.los)) >>> 0); var id = situationPlay("H"); G.rng = saveR; return id; }
 function cpuDefenseCall() {
   var r = G.rng(), w;
-  if (G.toGo <= 2) w = { run: 0.6, cover2: 0.15, blitz: 0.2, prevent: 0.05 };
-  else if (G.down === 3 && G.toGo >= 7) w = { run: 0.05, cover2: 0.4, blitz: 0.3, prevent: 0.25 };
-  else w = { run: 0.3, cover2: 0.4, blitz: 0.2, prevent: 0.1 };
-  if (G.half === 2) { w.blitz *= P("stageScale") * P("stageScale") * 1.4; }
+  if (G.toGo <= 2) w = { run: 0.3, bear: 0.3, cover1: 0.15, blitz: 0.15, cover3: 0.1 };
+  else if (G.down >= 3 && G.toGo >= 7) w = { cover2: 0.18, cover3: 0.18, tampa: 0.14, fire: 0.14, blitz: 0.14, press: 0.1, prevent: 0.12 };
+  else w = { cover2: 0.2, cover3: 0.2, cover1: 0.15, run: 0.12, fire: 0.1, tampa: 0.1, press: 0.08, blitz: 0.05 };
+  if (G.half === 2) { w.blitz = (w.blitz || 0) * P("stageScale") * 2; w.fire = (w.fire || 0) * P("stageScale") * 1.5; }
   var tot = 0; for (var k in w) tot += w[k]; r *= tot;
   for (var k2 in w) { r -= w[k2]; if (r <= 0) return k2; }
   return "cover2";
 }
-
 function onField(tm, unit) { return G.players.filter(function (p) { return p.tm === tm && p.unit === unit; }); }
 function byRole(tm, role) { for (var i = 0; i < G.players.length; i++) { var p = G.players[i]; if (p.tm === tm && p.role === role && p.onField) return p; } return null; }
 
@@ -201,9 +249,7 @@ function layoutFormation(playDef, defDef, snapTo) {
     p.state = "stand"; p.eng = null; p.stun = 0; p.diveT = 0; p.downT = 0; p.vx = 0; p.vy = 0; p.assign = null; p.route = null; p.target = null; p.shedCd = 0; p.jukeT = 0; p.slowT = 0; });
   var pos = {};
   ROLE_O.forEach(function (role) {
-    var p = byRole(off, role), f = form[role]; var x = bx + f[0] * flip;
-    if (role === "WR1") x = bx - 15 * flip; if (role === "WR2") x = bx + 14 * flip;
-    if (role === "WR3" && (playDef ? playDef.form : "gun") === "gun") x = bx - 8 * flip;
+    var p = byRole(off, role), f = form[role] || OL_X[role]; var x = bx + f[0] * flip;
     x = clamp(x, 2, FW - 2);
     pos[role] = [x, G.los - d * f[1]];
     p.gx = pos[role][0]; p.gy = pos[role][1];
@@ -211,6 +257,8 @@ function layoutFormation(playDef, defDef, snapTo) {
   var wr1 = pos.WR1[0], wr2 = pos.WR2[0], wr3 = pos.WR3[0];
   var dp = { DE1: [bx - 5 * flip, 1.2], DT1: [bx - 1.6 * flip, 1.2], DT2: [bx + 1.6 * flip, 1.2], DE2: [bx + 5 * flip, 1.2],
     LB1: [(bx - 5.5 * flip) * 0.5 + wr3 * 0.5, 5], LB2: [bx, 5.2], LB3: [bx + 6 * flip, 5], CB1: [wr1, 6.5], CB2: [wr2, 6.5], FS: [bx - 6, 13], SS: [bx + 6, 11] };
+  if (defDef && defDef.box) { dp.LB1[1] = 3.2; dp.LB2[1] = 3.6; dp.LB3[1] = 3.2; dp.SS = [bx + 3 * flip, 4.5]; dp.FS = [bx - 3 * flip, 7]; }
+  if (defDef && defDef.press) { dp.CB1[1] = 1.6; dp.CB2[1] = 1.6; }
   ROLE_D.forEach(function (role) { var p = byRole(def, role); p.gx = clamp(dp[role][0], 1.5, FW - 1.5); p.gy = G.los + d * dp[role][1]; });
   G.players.forEach(function (p) { if (!p.onField) return; p.hx = 0; p.hy = p.tm === off ? d : -d;
     if (snapTo) { p.x = p.gx; p.y = p.gy; } });
@@ -221,18 +269,26 @@ function layoutFormation(playDef, defDef, snapTo) {
   G.ball = { x: bx, y: G.los, z: 0, state: "spot" };
 }
 
+function layoutHuddle() {
+  var off = G.poss, d = dirOf(off), bx = clamp(G.ballX, 8, FW - 8);
+  [[off, G.los - d * 8.5, 2.3], [other(off), G.los + d * 7.5, 2.6]].forEach(function (h) {
+    var list = G.players.filter(function (p) { return p.onField && p.tm === h[0]; });
+    list.forEach(function (p, i) { var a = (i / list.length) * Math.PI * 2 + (h[0] === off ? 0.3 : 0); p.gx = bx + Math.cos(a) * h[2]; p.gy = h[1] + Math.sin(a) * h[2] * 0.8; p.hc = { x: bx, y: h[1] };
+      if (G.firstLayout) { p.x = p.gx; p.y = p.gy; } });
+  });
+}
 function startPresnap() {
   var pd = playById(G.call.off), dd = defById(G.call.def);
   layoutFormation(pd, dd, false);
   G.play = { off: pd, def: dd, t: 0, carrier: null, qb: byRole(G.poss, "QB"), thrown: false, handed: false, result: null,
     startLos: G.los, startPoss: G.poss, possChanged: false, sackable: pd.type === "pass", scramble: false, crossed: false, intended: null, deadT: 0 };
-  G.picked = false;
+  G.picked = false; G.wantSnap = false; G.players.forEach(function (p) { p.hc = null; });
   // user defender default
   if (G.poss === "A") {
     var role = dd.id === "prevent" ? "FS" : "LB2";
     G.userDef = byRole("H", role); G.ctl = G.userDef;
-  }
-  setPhase("presnap");
+  } else if (!G.bot) G.ctl = G.play.qb;
+  setPhase("lineup");
 }
 
 function snap() {
@@ -240,9 +296,9 @@ function snap() {
   pl.t = 0; G.players.forEach(function (p) { if (p.onField) { p.x = p.gx; p.y = p.gy; } });
   // offense assignments
   ROLE_O.forEach(function (role) {
-    var p = byRole(off, role); var rt = pl.off.routes[role];
+    var p = byRole(off, role); var rt = (G.hot && G.hot[role] !== undefined) ? G.hot[role] : pl.off.routes[role];
     if (role === "QB") { p.assign = pl.off.type === "pass" ? "drop" : "hand"; return; }
-    if (role === "RB") { if (pl.off.type === "run") { p.assign = "carry"; return; } }
+    if (role === "RB") { if (pl.off.type === "run" && pl.off.run.carrier === "RB") { p.assign = "carry"; return; } if (pl.off.pa) { p.assign = "pafake"; p.routeAfter = rt; return; } }
     if (rt && ROUTES[rt]) {
       var inward = p.x < G.ballX ? 1 : -1; if (Math.abs(p.x - G.ballX) < 0.5) inward = -flip;
       p.assign = "route"; p.routeName = rt;
@@ -258,6 +314,7 @@ function snap() {
     if (def === "A" && G.half === 2 && a.indexOf("zone:hook") === 0 && G.rng() < (P("stageScale") - 1) * 1.3) a = "rush";
     if (def === "A" && G.half === 2 && G.lastCatchRole && role === "FS" && pl.def.id !== "blitz") { a = "man:" + G.lastCatchRole; if (!G.doubleShown) { G.doubleShown = true; G.doubleRole = G.lastCatchRole; if (typeof UI !== "undefined" && !G.attract) UI.hint(T("hint.double", { n: byRole("H", G.lastCatchRole).r.num })); } }
     p.assign = a; p.react = 0.08 + G.rng() * 0.2 / (def === "A" ? P("coverage") : 1);
+    if (pl.def.press && a.indexOf("man:") === 0) { var wr = byRole(off, a.slice(4)); if (wr && (wr.role === "WR1" || wr.role === "WR2" || wr.role === "WR3")) wr.jam = clamp(0.35 + (p.r.pwr - wr.r.pwr) * 0.05, 0.1, 0.6); }
   });
   // blocking pairs
   var rushers = G.players.filter(function (p) { return p.tm === def && p.onField && p.assign === "rush"; });
@@ -275,7 +332,7 @@ function snap() {
       if (best) { used2.push(best); b.target = best; } });
   }
   G.ball = { x: G.ballX, y: G.los, z: 0, state: "held", holder: pl.qb };
-  pl.carrier = null; pl.holder = pl.qb;
+  pl.carrier = null; pl.holder = pl.qb; G.wantSnap = false;
   if (G.poss === "H") G.ctl = pl.qb;
   else G.ctl = G.userDef || byRole("H", "LB2");
   setPhase("live"); sfx("snap"); ev("snap", { play: pl.off.id, def: pl.def.id, poss: G.poss });
@@ -285,7 +342,7 @@ function snap() {
 function isUserCtl(p) { return p && p === G.ctl && !G.bot; }
 
 function updateLive(dt, inp) {
-  var pl = G.play; pl.t += dt;
+  var pl = G.play; pl.t += dt; G.sprint = !!(inp && inp.sprint);
   if (!G.ot && !G.clockStopped) { G.clock = Math.max(0, G.clock - dt); }
   var off = pl.carrier ? pl.carrier.tm : G.poss, d = dirOf(G.poss);
   // user control switching
@@ -294,7 +351,19 @@ function updateLive(dt, inp) {
   var qb = pl.qb;
   if (!pl.handed && !pl.thrown && !pl.carrier) {
     if (pl.off.type === "run") {
-      if (pl.t >= pl.off.hand) { var rb = byRole(G.poss, "RB"); handoff(rb); }
+      var run = pl.off.run, rb = byRole(G.poss, "RB"), userQB0 = G.poss === "H" && !G.bot;
+      if (run.rpo && !pl.rpoDone) { var tgt = byRole(G.poss, run.rpo);
+        if (userQB0 && inp && inp.throwTo && pl.t < run.hand + 0.1) { var tr0 = byRole("H", inp.throwTo); if (tr0 && tr0.assign === "route") { pl.rpoDone = true; pl.off = Object.assign({}, pl.off, { type: "pass" }); throwTo(tr0); } }
+        else if (!userQB0 && pl.t >= run.hand - 0.05) { pl.rpoDone = true; if (tgt && openness(tgt, other(G.poss)) > 2.4) { pl.off = Object.assign({}, pl.off, { type: "pass" }); throwTo(tgt); } } }
+      if (!pl.thrown && !pl.handed && pl.t >= run.hand) {
+        if (run.carrier === "QB") { pl.handed = true; pl.carrier = qb; pl.qbKeep = true; if (G.poss === "H") G.ctl = qb; ev("qb_run"); }
+        else if (run.option) { var flipO = G.call.flip ? -1 : 1, readSide = -Math.sign(run.aim * flipO) || 1;
+          var de = G.players.filter(function (x) { return x.onField && x.tm !== G.poss && (x.role === "DE1" || x.role === "DE2"); }).sort(function (a, b) { return (b.x - G.ballX) * readSide - (a.x - G.ballX) * readSide; })[0];
+          var keep = (userQB0 && inp && inp.sprint) || (de && !de.eng && dist(de, rb) < 3.6);
+          if (keep) { pl.handed = true; pl.carrier = qb; pl.qbKeep = true; pl.optKeep = readSide; if (G.poss === "H") G.ctl = qb; ev("option_keep"); }
+          else handoff(rb); }
+        else handoff(rb);
+      }
     } else {
       // pass play: QB holds
       var userQB = G.poss === "H" && !G.bot;
@@ -327,6 +396,7 @@ function updateLive(dt, inp) {
 }
 
 function handoff(rb) {
+  if (G.play.off.pa && rb.assign === "pafake") return;
   var pl = G.play; pl.handed = true; pl.carrier = rb; G.ball.holder = rb; G.ball.state = "held";
   if (G.poss === "H") G.ctl = rb; else autoSwitch(rb); ev("handoff"); sfx("tap");
 }
@@ -450,7 +520,7 @@ function bestDefender(c) {
   return best;
 }
 function autoSwitch(c) { if (G.bot || c.tm !== "A" || !P("autoSwitch")) return; var b = bestDefender(c); if (b && b !== G.ctl) { G.ctl = b; G.userDef = b; } }
-function selectDefender(p) { if (!p || p.tm !== "H" || !p.onField || G.bot) return; if (!(G.phase === "presnap" || G.phase === "live" || G.phase === "playcall")) return;
+function selectDefender(p) { if (!p || p.tm !== "H" || !p.onField || G.bot) return; if (!(G.phase === "presnap" || G.phase === "lineup" || G.phase === "live" || G.phase === "playcall")) return;
   if (G.poss !== "A" && !(G.play && G.play.carrier && G.play.carrier.tm === "A")) return; G.ctl = p; G.userDef = p; G.picked = true; sfx("tap"); ev("select_defender"); }
 function switchDefender() {
   var b = G.play && G.play.carrier ? G.play.carrier : G.ball;
@@ -539,8 +609,11 @@ function dive(p, inp, target) {
 function aiRunner(p, dt, s) {
   var pl = G.play, d = dirOf(p.tm), opp = other(p.tm);
   var tx = 0, ty = d * 1.6;
-  if (pl.off && pl.off.type === "run" && !pl.possChanged && pl.t < 1.6 && p.role === "RB") {
-    var aimX = G.ballX + pl.off.aim * (G.call.flip ? -1 : 1); tx += clamp(aimX - p.x, -1, 1) * 1.4;
+  if (pl.off && pl.off.type === "run" && !pl.possChanged && pl.t < 1.8 && (p.role === "RB" || pl.qbKeep)) {
+    var fl2 = G.call.flip ? -1 : 1, aim = pl.off.aim;
+    if (pl.optKeep) aim = pl.optKeep * fl2 * 9;
+    if (pl.off.run && pl.off.run.counter && pl.t < 0.85) aim = -aim * 0.6;
+    var aimX = G.ballX + aim * fl2; tx += clamp(aimX - p.x, -1, 1) * 1.6;
   }
   if (pl.qbRun && p === pl.qb && !pl.crossed) { tx += (p.x < FW / 2 ? 1 : -1) * 0.8; }
   for (var i = 0; i < G.players.length; i++) { var q = G.players[i];
@@ -559,7 +632,9 @@ function aiRunner(p, dt, s) {
 function offenseAI(p, dt, s, d) {
   var pl = G.play;
   if (p === pl.qb) {
+    if (pl.off.type === "run" && pl.off.run.draw && pl.t < pl.off.run.hand) { steerTo(p, p.gx, G.los - d * (pl.off.run.carrier === "QB" ? 6.5 : 4.5), s * 0.6, dt); return; }
     if (pl.off.type === "run") { steerTo(p, p.x - (G.call.flip ? -1 : 1) * 0.5, G.los - d * 2.4, s * 0.6, dt); return; }
+    if (pl.off.pa && pl.t < 0.6) { var rb2 = byRole(p.tm, "RB"); steerTo(p, (p.x + rb2.x) / 2, G.los - d * 3, s * 0.6, dt); return; }
     if (pl.qbRun) { aiRunner(p, dt, s); return; }
     var dropY = G.los - d * 7, threat = nearestOpp(p, other(p.tm), true);
     var tx = p.gx, ty = dropY;
@@ -567,11 +642,18 @@ function offenseAI(p, dt, s, d) {
     steerTo(p, tx, ty, s * 0.8, dt); return;
   }
   if (p.assign === "carry" && !pl.handed) { // RB before handoff: approach the mesh point
-    var flip = G.call.flip ? -1 : 1; steerTo(p, G.ballX + pl.off.aim * flip * 0.35, G.los - d * 3.2, s * 0.8, dt); return; }
+    var flip = G.call.flip ? -1 : 1, ax = pl.off.aim * flip * (pl.off.run && pl.off.run.counter && pl.t < 0.35 ? -0.6 : 0.35);
+    steerTo(p, G.ballX + ax, G.los - d * (pl.off.run && pl.off.run.draw ? 4.5 : 3.2), s * 0.8, dt); return; }
+  if (p.assign === "pafake") { var fl = G.call.flip ? -1 : 1;
+    if (pl.t < 0.7) { steerTo(p, G.ballX + pl.off.aim * fl * 0.4, G.los - d * 2.4, s * 0.75, dt); return; }
+    var rta = p.routeAfter; if (rta && ROUTES[rta] && rta !== "check") { p.assign = "route"; p.gx = p.x; p.gy = p.y; p.route = routePts(p, rta, fl, d); p.ri = 0; p.routeStop = !!STOP_ROUTES[rta]; p.delay = 0; }
+    else if (rta === "check") { p.assign = "route"; p.gx = p.x; p.gy = p.y; p.route = routePts(p, "check", fl, d); p.ri = 0; p.routeStop = true; p.delay = 0; }
+    else p.assign = "block"; return; }
   if (p.assign === "route" || p.assign === "catch") {
     if (p.assign === "catch" && G.ball.state === "air") { // run to the landing spot
       steerTo(p, G.ball.x1, G.ball.y1, s, dt, 10); return; }
     if (p.delay > 0 && pl.t < p.delay) { steerBlockNear(p, dt, s); return; }
+    if (p.jam > 0 && pl.t < p.jam) { p.vx = damp(p.vx, 0, 8, dt); p.vy = damp(p.vy, d * s * 0.3, 8, dt); return; }
     if (p.route && p.ri < p.route.length) {
       var w = p.route[p.ri]; if (len(w.x - p.x, w.y - p.y) < 0.9) p.ri++;
       if (p.ri < p.route.length) { w = p.route[p.ri]; steerTo(p, w.x, w.y, s, dt, 10); return; }
@@ -664,6 +746,7 @@ function defenseAI(p, dt, s, d) {
     var land = { x: ball.x1, y: ball.y1 }, dl = dist(p, land);
     if (dl < 11 || (a.indexOf("man:") === 0 && pl.intended && a.slice(4) === pl.intended.role)) { steerTo(p, land.x, land.y, s, dt, 10); return; }
   }
+  if (pl.off.pa && pl.t < 0.75 && !pl.thrown && a !== "rush" && p.role.indexOf("CB") < 0 && G.rng() < 0.9) { steerTo(p, p.x, G.los + d * 2.5, s * 0.55, dt); return; }
   if (a === "rush") {
     var tgt = pl.handed ? pl.carrier : qb;
     var lead = 0.25; steerTo(p, tgt.x + tgt.vx * lead, tgt.y + tgt.vy * lead, s * (p.tm === "A" ? (0.85 + 0.15 * P("passRush")) : 1), dt, 8);
@@ -813,7 +896,7 @@ function popupYds(gain, oob) {
 function popup(x, y, key, vars) { G.fx.push({ kind: "pop", x: x, y: y, key: key, vars: vars || {}, t: 0 }); }
 
 function nextSnapOrClock(stopped) {
-  if (!stopped && !G.ot) G.clock = Math.max(0, G.clock - 7);
+  G.lastRunoff = 0; if (!stopped && !G.ot) { var ro = Math.min(G.clock, 7); G.clock -= ro; G.lastRunoff = ro; }
   if (G.clock <= 0 && !G.ot) return endQuarter();
   if (G.ot && checkOTDone()) return;
   beginPlayCall();
@@ -931,7 +1014,7 @@ function updateKickoff(dt) {
 function endQuarter(pendingKick) {
   var q = G.quarter;
   if (q === 2 && P("stageCount") >= 2) {
-    G.quarter = 3; G.half = 2; G.clock = G.qlen; setPhase("halftime"); G.halfT = 0;
+    G.quarter = 3; G.half = 2; G.clock = G.qlen; G.tos = { H: 3, A: 3 }; setPhase("halftime"); G.halfT = 0;
     banner("b.half", null, true, "#ffd23f"); sfx("horn"); ev("stage_complete", { stage: 1 }); return;
   }
   if (q >= 4 || (P("stageCount") < 2 && q >= 2)) {
@@ -987,9 +1070,13 @@ function simStep(dt, inp) {
   for (var i = G.fx.length - 1; i >= 0; i--) { G.fx[i].t += dt; if (G.fx[i].t > 1.4) G.fx.splice(i, 1); }
   switch (G.phase) {
     case "kickoff": updateKickoff(dt); break;
-    case "playcall": idleDrift(dt); if (G.bot && G.phaseT > 0.4 && !G.call.launched) botPlayCall();
+    case "playcall": idleDrift(dt); tickPlayClock(dt); if (G.bot && G.phaseT > 0.4 && !G.call.launched) botPlayCall();
       if (G.poss === "A" && G.call && G.call.special && !G.call.launched && G.phaseT > 1.0) { G.call.launched = true; launchCall(); } break;
-    case "presnap": presnapMove(dt); var wait = (G.poss === "A" && !G.bot && !G.attract) ? (G.picked ? 1.0 : 2.6) : 0.7; if (G.phaseT > Math.max(2.2, wait) || (G.phaseT > wait && presnapSet())) snap(); break;
+    case "lineup": presnapMove(dt); tickPlayClock(dt); if (G.phaseT > 2.6 || (G.phaseT > 0.6 && presnapSet())) setPhase("presnap"); break;
+    case "presnap": presnapMove(dt); tickPlayClock(dt);
+      if (G.poss === "H" && !G.bot && !G.attract) { if (G.wantSnap) snap(); }
+      else { var wait = (G.poss === "A" && !G.bot && !G.attract) ? (G.picked ? 1.6 : 4.0) : 0.5; if (UI.menuOpen && G.poss === "A" && G.phaseT < 7) wait = 99; if (G.phaseT > wait) snap(); }
+      break;
     case "live": updateLive(dt, inp); break;
     case "dead": idleDead(dt); G.deadT += dt; if (G.deadT > 1.5) afterDead(); break;
     case "pat": idleDrift(dt); if (G.bot) userPAT("kick"); break;
@@ -1003,14 +1090,54 @@ function simStep(dt, inp) {
   G.danger = clamp(dg, 0, 1); G.maxDanger = Math.max(G.maxDanger, G.danger);
   G.maxDangerByStage[G.half] = Math.max(G.maxDangerByStage[G.half] || 0, G.danger);
 }
+function tickPlayClock(dt) {
+  if (G.attract || G.bot) return; G.pclock = Math.max(0, G.pclock - dt);
+  if (G.pclock <= 0 && G.poss === "H" && (G.phase === "presnap" || G.phase === "lineup" || G.phase === "playcall")) delayOfGame();
+  if (G.pclock <= 0 && G.poss === "A") G.pclock = 0.01;
+}
+function delayOfGame() {
+  var d = dirOf(G.poss), toOwn = ydFromOwn(G.poss, G.los), back = Math.min(5, toOwn / 2);
+  G.los -= d * back; if (100 - ydFromOwn(G.poss, G.los) > G.toGo) G.toGo = Math.round((G.toGo + back) * 10) / 10;
+  G.toGo = Math.ceil(G.toGo); banner("b.delay", null, false, "#ffd23f"); sfx("whistle"); ev("penalty", { kind: "delay" }); G.pclock = 25;
+  if (G.phase === "playcall") { layoutFormation(null, null, true); if (!G.noHuddle) layoutHuddle(); } else startPresnap();
+}
+function requestSnap() { if ((G.phase === "presnap" || G.phase === "lineup") && G.poss === "H") { if (G.phase === "lineup") setPhase("presnap"); G.wantSnap = true; } }
+function callTimeout(tm) {
+  if (!G.tos || G.tos[tm] <= 0 || G.ended) return false;
+  if (!(G.phase === "playcall" || G.phase === "presnap" || G.phase === "lineup")) return false;
+  G.tos[tm]--; if (!G.ot && G.lastRunoff) { G.clock = Math.min(G.qlen, G.clock + G.lastRunoff); G.lastRunoff = 0; }
+  G.pclock = 40; banner("b.timeout", { t: teamOf(tm).abbr }, false, "#ffd23f"); sfx("whistle"); ev("timeout_called", { tm: tm }); return true;
+}
+function setHot(role, rt) { if (!G.play || G.poss !== "H") return; G.hot[role] = rt; sfx("tap"); ev("hot_route", { role: role, route: rt }); }
+function userAudible(id) { if (G.poss !== "H" || !(G.phase === "presnap" || G.phase === "lineup")) return; G.call.off = id; G.hot = {}; sfx("tap"); ev("audible", { play: id }); startPresnap(); }
+function userDefAudible(id) { if (G.poss !== "A" || !G.play || !(G.phase === "presnap" || G.phase === "lineup")) return; G.call.def = id; G.play.def = defById(id); layoutFormation(G.play.off, G.play.def, false); sfx("tap"); ev("def_audible", { def: id }); }
+function routeName(role) { var pl = G.play; if (!pl) return null; if (G.hot && G.hot[role] !== undefined) return G.hot[role]; return pl.off.routes[role]; }
+function isEligibleRoute(role) { var rt = routeName(role); return !!(rt && ROUTES[rt]); }
+function routePts(p, rt, flip, d) {
+  var inward = p.gx < G.ballX ? 1 : -1; if (Math.abs(p.gx - G.ballX) < 0.5) inward = -flip;
+  return ROUTES[rt].map(function (w) { return { x: clamp(p.gx + inward * w[0], 1, FW - 1), y: p.gy + d * w[1] }; });
+}
+function previewRoutes() {
+  var pl = G.play; if (!pl) return null; var d = dirOf(G.poss), flip = G.call.flip ? -1 : 1, out = [];
+  ["WR1", "WR2", "WR3", "TE", "RB"].forEach(function (role) { var p = byRole(G.poss, role); if (!p) return; var rt = routeName(role);
+    if (pl.off.run && pl.off.run.carrier === role.slice(0, 2) && role === "RB" && !pl.off.pa) return;
+    if (!rt || !ROUTES[rt]) return; var pts = [{ x: p.gx, y: p.gy }].concat(routePts(p, rt, flip, d));
+    if (!STOP_ROUTES[rt]) { var a = pts[pts.length - 1], b = pts[pts.length - 2], l = len(a.x - b.x, a.y - b.y) || 1; if (rt !== "go" && rt !== "seam" && rt !== "fade") pts.push({ x: clamp(a.x + (a.x - b.x) / l * 4, 1, FW - 1), y: a.y + (a.y - b.y) / l * 4 }); }
+    if (rt === "go" || rt === "seam") pts[pts.length - 1] = { x: pts[pts.length - 1].x, y: p.gy + d * 22 };
+    out.push({ pts: pts, hot: G.hot && G.hot[role] !== undefined }); });
+  if (pl.off.run && !pl.off.pa) { var cr = byRole(G.poss, pl.off.run.carrier === "QB" ? "QB" : "RB"), aim = G.ballX + pl.off.run.aim * flip;
+    var pts2 = [{ x: cr.gx, y: cr.gy }]; if (pl.off.run.counter) pts2.push({ x: cr.gx - pl.off.run.aim * flip * 0.5, y: G.los - d * 3 });
+    pts2.push({ x: aim, y: G.los }, { x: aim + (pl.off.run.aim > 6 ? flip * 2 : 0), y: G.los + d * 5 }); out.push({ pts: pts2, run: true }); }
+  return out;
+}
 function presnapSet() { for (var i = 0; i < G.players.length; i++) { var p = G.players[i]; if (p.onField && (Math.abs(p.x - p.gx) > 0.6 || Math.abs(p.y - p.gy) > 0.6)) return false; } return true; }
 function presnapMove(dt) {
   G.players.forEach(function (p) { if (!p.onField) return; steerTo(p, p.gx, p.gy, 9, dt, 10); integ(p, dt);
     var d = dirOf(G.poss); p.hx = 0; p.hy = p.tm === G.poss ? d : -d; });
 }
 function idleDrift(dt) {
-  G.players.forEach(function (p) { if (!p.onField) return; steerTo(p, p.gx, p.gy, 5, dt, 6); integ(p, dt);
-    if (len(p.vx, p.vy) < 0.6) { var d = dirOf(G.poss); p.hx = 0; p.hy = p.tm === G.poss ? d : -d; } });
+  G.players.forEach(function (p) { if (!p.onField) return; steerTo(p, p.gx, p.gy, 6, dt, 6); integ(p, dt);
+    if (len(p.vx, p.vy) < 0.6) { if (p.hc) { var hx = p.hc.x - p.x, hy = p.hc.y - p.y, hl = len(hx, hy) || 1; p.hx = hx / hl; p.hy = hy / hl; } else { var d = dirOf(G.poss); p.hx = 0; p.hy = p.tm === G.poss ? d : -d; } } });
 }
 function idleDead(dt) {
   G.players.forEach(function (p) { if (!p.onField) return; if (p.downT > 0) p.downT = Math.max(0.05, p.downT - dt * 0.4);
@@ -1027,18 +1154,16 @@ function botPlayCall() {
     var saveA = G.poss; var c = cpuOffenseCallFor("H");
     if (c.special) { G.call.special = c.special; }
     else { G.call.off = c.play; G.call.flip = c.flip; }
-  } else G.call.def = ["run", "cover2", "blitz", "prevent"][Math.floor(G.rng() * 3)];
+  } else G.call.def = cpuDefenseCall();
   launchCall();
 }
 function cpuOffenseCallFor(tm) {
-  var r = G.rng, dist2 = 100 - ydFromOwn(tm, G.los), k = kicker(tm), range = 30 + k.pwr * 2.6;
-  if (G.twoPt) return { play: "slants", flip: r() < 0.5 };
+  var dist2 = 100 - ydFromOwn(tm, G.los), k = kicker(tm), range = 30 + k.pwr * 2.6;
+  if (G.twoPt) return { play: G.rng() < 0.5 ? "slants" : "gdive", flip: G.rng() < 0.5 };
   if (G.down === 4) {
-    if (dist2 + 17 <= range - 4) return { special: "fg" };
-    if (!(G.ot || G.toGo <= 1)) return { special: "punt" };
+    var trailing = G.score[tm] < G.score[other(tm)], late = G.quarter >= 4 && G.clock < 120;
+    if (dist2 + 17 <= range - 4 && !(trailing && Math.abs(G.score.H - G.score.A) > 3 && late)) return { special: "fg" };
+    if (!(G.ot || (late && trailing) || (G.toGo <= 1 && ydFromOwn(tm, G.los) > 45))) return { special: "punt" };
   }
-  var passW = G.toGo >= 8 ? 0.7 : G.toGo <= 2 ? 0.25 : 0.5, play;
-  if (r() < passW) { var x = r(); play = x < 0.35 ? "slants" : x < 0.65 ? "curl" : x < 0.85 ? "deep" : "screen"; }
-  else play = r() < 0.5 ? "dive" : "sweep";
-  return { play: play, flip: r() < 0.5 };
+  return { play: situationPlay(tm), flip: G.rng() < 0.5 };
 }

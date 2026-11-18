@@ -1,7 +1,8 @@
 // ---------- RENDER ----------
 var R = { cv: null, ctx: null, lo: null, lx: null, iw: 200, ih: 400, ps: 2, dpr: 1, cssW: 390, cssH: 844,
-  PX: 4.8, PY: 4.0, MX: 16, MY: 14, field: null, fieldKey: "", cam: { x: FW / 2, y: 35, dir: 1, D: 16 }, vign: null, t: 0, draws: 0, fps: 60,
-  m7: null, tex: null, texR: null, pano: null };
+  PX: 4.8, PY: 4.0, MX: 16, MY: 14, field: null, fieldKey: "", cam: { x: FW / 2, y: 35, dir: 1, D: 20 }, vign: null, t: 0, draws: 0, fps: 60,
+  m7: null, tex: null, texR: null, walls: null };
+var WALL_X = 7.5, WALL_H = 13, END_Y = 12;
 
 function isM7() { return P("camera") !== "classic"; }
 function renderInit(canvas) { R.cv = canvas; R.ctx = canvas.getContext("2d"); R.lo = makeCanvas(200, 400); R.lx = R.lo.getContext("2d"); }
@@ -9,17 +10,17 @@ function renderInit(canvas) { R.cv = canvas; R.ctx = canvas.getContext("2d"); R.
 function renderLayout(cssW, cssH) {
   R.cssW = Math.max(1, cssW); R.cssH = Math.max(1, cssH);
   R.dpr = Math.max(0.5, Math.min(2, 1000 / Math.min(R.cssW, R.cssH)));
+  var land = R.cssW > R.cssH;
   var ps = P("pixelSize") | 0;
-  if (!ps) ps = isM7() ? clamp(Math.round(Math.min(R.cssW / 195, R.cssH / 250) * 2) / 2, 2, 6) : clamp(Math.round(Math.min(R.cssW / 150, R.cssH / 230) * 2) / 2, 2, 6);
+  if (!ps) ps = isM7() ? (land ? clamp(Math.round(R.cssH / 250 * 2) / 2, 2, 6) : clamp(Math.round(Math.min(R.cssW / 195, R.cssH / 300) * 2) / 2, 2, 6))
+                       : clamp(Math.round(Math.min(R.cssW / 150, R.cssH / 230) * 2) / 2, 2, 6);
   R.ps = ps; R.iw = Math.ceil(R.cssW / ps); R.ih = Math.ceil(R.cssH / ps);
   R.lo.width = R.iw; R.lo.height = R.ih;
   R.cv.width = Math.round(R.cssW * R.dpr); R.cv.height = Math.round(R.cssH * R.dpr);
   R.cv.style.width = R.cssW + "px"; R.cv.style.height = R.cssH + "px";
-  R.vign = null; R.pano = null;
-  var land = R.iw > R.ih;
-  var hY = Math.round(R.ih * (land ? 0.24 : 0.19)), yL = Math.round(R.ih * (land ? 0.6 : 0.62));
-  var visW = clamp(R.iw / 6, 30, 66), DB = 28;
-  R.m7 = { hY: hY, fx: R.iw * DB / visW, k: (yL - hY) * DB, DB: DB };
+  R.vign = null;
+  var hY = Math.round(R.ih * (land ? 0.04 : 0.12)), yL = Math.round(R.ih * (land ? 0.56 : 0.6)), visW = land ? 34 : 24, DB = 20;
+  R.m7 = { hY: hY, fx: R.iw * DB / visW, k: (yL - hY) * DB, DB: DB, tpx: R.ih * (land ? 0.15 : 0.085), land: land };
 }
 
 // ---- projection: world (x, y, height z in yards) -> low-res pixels ----
@@ -33,15 +34,21 @@ function project(x, y, z) {
   return { x: (x - R.cam.x) * R.PX + R.iw / 2, y: R.ih / 2 - (y - R.cam.y) * R.PY - (z || 0) * R.PY, s: R.PX, dz: -y, vis: true };
 }
 function projectCss(x, y, z) { var p = project(x, y, z); return { x: p.x * R.ps, y: p.y * R.ps, on: p.vis && p.x >= 0 && p.y >= 0 && p.x <= R.iw && p.y <= R.ih }; }
-function wx(x) { return Math.round((x - R.cam.x) * R.PX + R.iw / 2); }
-function wy(y) { return Math.round(R.ih / 2 - (y - R.cam.y) * R.PY); }
+function spriteK(q) { return isM7() ? (q.s / (R.m7.fx / R.m7.DB)) * R.m7.tpx / 30 : 0.55; }
 function pickPlayerAt(cx, cy, tm, maxD) {
   var best = null, bd = maxD || 34;
-  G.players.forEach(function (p) { if (!p.onField || p.tm !== tm) return; var q = projectCss(p.x, p.y, 1.2); if (!q.on) return;
-    var d = Math.hypot(q.x - cx, q.y - cy); if (d < bd) { bd = d; best = p; } });
-  return best;
+  G.players.forEach(function (p) { if (!p.onField || p.tm !== tm) return; var q = project(p.x, p.y, 0); if (!q.vis) return; var k = spriteK(q);
+    var px = q.x * R.ps, py = (q.y - 14 * k) * R.ps; var d = Math.hypot(px - cx, py - cy); if (d < Math.max(bd, 16 * k * R.ps)) { if (!best || d < best.d) best = { p: p, d: d }; } });
+  return best ? best.p : null;
+}
+function lineLo(c, x0, y0, x1, y1, col) {
+  x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1); c.fillStyle = col;
+  var dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, err = dx - dy, n = 0;
+  while (n++ < 1200) { if (x0 >= -2 && y0 >= -2 && x0 <= R.iw + 2 && y0 <= R.ih + 2) c.fillRect(x0, y0, 1, 1); if (x0 === x1 && y0 === y1) break; var e2 = 2 * err; if (e2 > -dy) { err -= dy; x0 += sx; } if (e2 < dx) { err += dx; y0 += sy; } }
 }
 
+function wx(x) { return Math.round((x - R.cam.x) * R.PX + R.iw / 2); }
+function wy(y) { return Math.round(R.ih / 2 - (y - R.cam.y) * R.PY); }
 function asciiOnly(s) { return String(s || "").toUpperCase().replace(/[ÁÀÄÂ]/g, "A").replace(/[ÉÈËÊ]/g, "E").replace(/[ÍÌÏÎ]/g, "I").replace(/[ÓÒÖÔ]/g, "O").replace(/[ÚÙÜÛ]/g, "U").replace(/Ñ/g, "N").replace(/[^A-Z0-9 &'!?.\-+#:]/g, ""); }
 
 function buildFieldTex(PX, PY, withStands, MX, MY) {
@@ -113,31 +120,99 @@ function buildFieldTex(PX, PY, withStands, MX, MY) {
 }
 
 
+
+// ---- Mode 7 field texture (8 px per yard, big numbers facing the sidelines) ----
+function rotText(c, txt, cx, cy, sc, col, sh, rot) {
+  var w = textW3(txt, sc), h = 5 * sc, t = makeCanvas(w + sc, h + sc), tc = t.getContext("2d"); drawText3(tc, txt, 0, 0, col, sc, sh);
+  c.save(); c.translate(cx, cy); c.rotate(rot); c.drawImage(t, -w / 2, -h / 2); c.restore();
+}
+function buildFieldM7() {
+  var PX = 8, MX = 10, MY = 16, W = Math.ceil((FW + MX * 2) * PX), H = Math.ceil((FL + MY * 2) * PX);
+  var cv = makeCanvas(W, H), c = cv.getContext("2d"), rng = mulberry32(4321);
+  function fx(x) { return Math.round((x + MX) * PX); } function fy(y) { return Math.round(H - (y + MY) * PX); }
+  c.fillStyle = "#3b1d16"; c.fillRect(0, 0, W, H);
+  for (var i = 0; i < 6000; i++) { c.fillStyle = rng() < 0.5 ? "#47241b" : "#301712"; c.fillRect(Math.floor(rng() * W), Math.floor(rng() * H), 2, 1); }
+  c.fillStyle = "#1f6b2a"; c.fillRect(fx(-4.5), fy(FL + 5), fx(FW + 4.5) - fx(-4.5), fy(-5) - fy(FL + 5));
+  for (var s = 0; s < 24; s++) { c.fillStyle = s % 2 ? "#33a043" : "#2c9139"; c.fillRect(fx(0), fy(s * 5 + 5), fx(FW) - fx(0), fy(s * 5) - fy(s * 5 + 5)); }
+  for (var g = 0; g < 26000; g++) { var gx = fx(-4.5) + Math.floor(rng() * (fx(FW + 4.5) - fx(-4.5))), gy = fy(FL + 5) + Math.floor(rng() * (fy(-5) - fy(FL + 5)));
+    c.fillStyle = rng() < 0.5 ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.09)"; c.fillRect(gx, gy, 1, 2); }
+  function endzone(y0, team) {
+    var p = team.primary; c.fillStyle = shade(p, -0.1); c.fillRect(fx(0), fy(y0 + 10), fx(FW) - fx(0), fy(y0) - fy(y0 + 10));
+    for (var d = 0; d < 5000; d++) { c.fillStyle = rng() < 0.5 ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.12)"; c.fillRect(fx(0) + Math.floor(rng() * (fx(FW) - fx(0))), fy(y0 + 10) + Math.floor(rng() * (fy(y0) - fy(y0 + 10))), 1, 2); }
+    var txt = asciiOnly(team.name).slice(0, 14) || "HOME", sc = 8; while (textW3(txt, sc) > fx(FW) - fx(0) - 20 && sc > 2) sc--;
+    var tc = colDist(team.secondary, p) < 90 ? (lum(p) > 128 ? "#101018" : "#ffffff") : team.secondary;
+    rotText(c, txt, (fx(0) + fx(FW)) / 2, (fy(y0 + 10) + fy(y0)) / 2, sc, tc, "#0c0c14", y0 > 50 ? Math.PI : 0);
+  }
+  var fh = G.userAway ? G.away : G.home;
+  endzone(0, G.home); endzone(110, G.away);
+  c.fillStyle = "#f4f4ec";
+  for (var yl = 10; yl <= 110; yl += 5) c.fillRect(fx(0), fy(yl) - 1, fx(FW) - fx(0), 2);
+  for (var yd = 11; yd < 110; yd++) { if (yd % 5 === 0) continue; [0.6, HASH_L, HASH_R, FW - 0.6].forEach(function (hx) { c.fillRect(fx(hx) - 3, fy(yd), 6, 1); }); }
+  c.fillRect(fx(0) - 4, fy(FL), 4, fy(0) - fy(FL)); c.fillRect(fx(FW), fy(FL), 4, fy(0) - fy(FL));
+  c.fillRect(fx(0) - 4, fy(0), fx(FW) - fx(0) + 8, 3); c.fillRect(fx(0) - 4, fy(FL) - 3, fx(FW) - fx(0) + 8, 3);
+  for (var n = 10; n <= 90; n += 10) { var lab = String(n <= 50 ? n : 100 - n), yy = fy(10 + n);
+    rotText(c, lab, fx(8.5), yy, 4, "#f4f4ec", null, Math.PI / 2); rotText(c, lab, fx(FW - 8.5), yy, 4, "#f4f4ec", null, -Math.PI / 2); }
+  var ab = asciiOnly(fh.abbr).slice(0, 4) || "HOME";
+  c.globalAlpha = 0.9; rotText(c, ab, fx(FW / 2), fy(60), 7, colDist(fh.secondary, "#33a043") < 120 ? "#f4f4ec" : fh.secondary, shade(fh.primary, -0.4), 0); c.globalAlpha = 1;
+  c.fillStyle = "#e8e8e0"; c.fillRect(fx(-2.5), fy(75), 2, fy(35) - fy(75)); c.fillRect(fx(FW + 2.5) - 2, fy(75), 2, fy(35) - fy(75));
+  return { cv: cv, W: W, H: H, PX: PX, PY: PX, MX: MX, MY: MY };
+}
+// ---- stadium walls with crowd and banners ----
+function buildWall(team, other, seed, endWall) {
+  var PXW = 6, W = endWall ? 420 : 960, H = WALL_H * PXW, frames = [], rng0 = mulberry32(seed);
+  var heads = []; for (var y = 16; y < H - 12; y += 6) for (var x = 1; x < W - 2; x += 3) if (rng0() < 0.86 && (x % 64) > 4) heads.push([x, y, rng0(), rng0(), rng0()]);
+  var banners = [asciiOnly(team.name), "GO " + asciiOnly(team.mascot), "FRIDAY NIGHT BLITZ", asciiOnly(other.name) + " FANS", "FAN ZONE", "ALL-STATE"];
+  for (var f = 0; f < 2; f++) {
+    var cv = makeCanvas(W, H), c = cv.getContext("2d");
+    c.fillStyle = "#151726"; c.fillRect(0, 0, W, H);
+    for (var r = 14; r < H - 12; r += 6) { c.fillStyle = "#2a2d3c"; c.fillRect(0, r + 5, W, 1); }
+    for (var a = 0; a < W; a += 64) { c.fillStyle = "#3a3e52"; c.fillRect(a, 12, 4, H - 22); }
+    heads.forEach(function (h) { var bodyC = h[2] < 0.38 ? team.primary : h[2] < 0.55 ? team.secondary : h[2] < 0.66 ? other.primary : h[2] < 0.8 ? "#e8e4d8" : "#3a3a4a";
+      var up = f === 1 && h[4] < 0.25 ? 1 : 0; c.fillStyle = bodyC; c.fillRect(h[0], h[1] + 2 - up, 2, 3);
+      c.fillStyle = SKINS[Math.floor(h[3] * 4)]; c.fillRect(h[0], h[1] - up, 2, 2);
+      if (up) { c.fillStyle = bodyC; c.fillRect(h[0] - 1, h[1] - 2, 1, 2); } });
+    c.fillStyle = "#8a90a0"; c.fillRect(0, 10, W, 2); c.fillStyle = "#0b0d18"; c.fillRect(0, 0, W, 10);
+    for (var lp = 30; lp < W; lp += endWall ? 140 : 240) { c.fillStyle = "#fffbe0"; c.fillRect(lp, 2, 12, 5); c.fillStyle = "rgba(255,250,210,0.25)"; c.fillRect(lp - 4, 0, 20, 10); }
+    c.fillStyle = shade(team.primary, -0.45); c.fillRect(0, H - 11, W, 11); c.fillStyle = "#e8e8e8"; c.fillRect(0, H - 12, W, 1);
+    var bx = 6, bi = 0; while (bx < W) { var txt = banners[bi++ % banners.length].slice(0, 22), tw = textW3(txt, 1) + 8, bc = bi % 2 ? team.primary : shade(team.secondary, -0.2);
+      c.fillStyle = bc; c.fillRect(bx, H - 10, tw, 8);
+      drawText3(c, txt, bx + 4, H - 8, lum(bc) > 150 ? "#14141c" : "#ffffff", 1); bx += tw + 10; }
+    if (endWall) { c.fillStyle = "#0b0d18"; c.fillRect(W / 2 - 62, 0, 124, 28); c.fillStyle = "#ffd23f"; c.fillRect(W / 2 - 60, 2, 120, 1);
+      var t1 = "FRIDAY NIGHT BLITZ", t2 = asciiOnly(team.abbr) + "  VS  " + asciiOnly(other.abbr);
+      drawText3(c, t1, Math.round(W / 2 - textW3(t1, 1) / 2), 7, "#ffd23f", 1); drawText3(c, t2, Math.round(W / 2 - textW3(t2, 1) / 2), 16, "#ffffff", 1); }
+    frames.push(cv);
+  }
+  return { f: frames, W: W, H: H, PX: PXW };
+}
+
 function buildField() {
-  var key = G.home.primary + G.home.secondary + G.away.primary + G.away.secondary + G.home.name + G.away.name + G.home.abbr + G.userAway + (isM7() ? "m7" : "c");
+  var key = G.home.primary + G.home.secondary + G.away.primary + G.away.secondary + G.home.name + G.away.name + G.home.abbr + G.away.abbr + G.userAway + (isM7() ? "m7" : "c");
   if (R.fieldKey === key && (R.field || R.tex)) return; R.fieldKey = key;
   if (isM7()) {
-    var t = buildFieldTex(5, 5, false, 40, 60); R.tex = t;
+    var t = buildFieldM7(); R.tex = t;
     var r = makeCanvas(t.W, t.H), rc = r.getContext("2d"); rc.translate(t.W, t.H); rc.rotate(Math.PI); rc.drawImage(t.cv, 0, 0); R.texR = r;
+    var fh = G.userAway ? G.away : G.home, fa = G.userAway ? G.home : G.away;
+    R.walls = { home: buildWall(fh, fa, 11, false), away: buildWall(fa, fh, 22, false), endH: buildWall(fh, fa, 33, true), endA: buildWall(fa, fh, 44, true) };
     R.field = null;
   } else { var f = buildFieldTex(R.PX, R.PY, true); R.field = f.cv; R.fieldW = f.W; R.fieldH = f.H; R.tex = null; }
 }
 
 function camTarget() {
-  var b = G.ball, pl = G.play, T = { x: b.x, y: b.y }, dir = dirOf(G.poss), D = 28;
-  if (G.phase === "kickoff" || G.phase === "punt" || (G.phase === "kick" && G.kick && G.kick.flying)) { dir = dirOf(G.kick ? G.kick.team : G.poss); D = 34; }
-  else if (G.phase === "kick") { T = { x: b.x, y: b.y }; D = 38; }
-  else if (pl && (G.phase === "live" || G.phase === "dead") && pl.carrier) { T = { x: pl.carrier.x, y: pl.carrier.y }; dir = dirOf(pl.carrier.tm); D = pl.carrier.tm === "H" ? 26 : 33; }
-  else if (pl && G.phase === "live" && b.state === "air") { T = { x: b.x, y: b.y }; D = G.poss === "H" ? 30 : 35; }
-  else if (pl && G.phase === "live") { T = { x: pl.qb.x, y: G.los }; D = G.poss === "H" ? 28 : 35; }
-  else { T = { x: G.ballX, y: G.los }; D = G.poss === "H" ? 28 : 35; }
+  var b = G.ball, pl = G.play, T = { x: b.x, y: b.y }, dir = dirOf(G.poss), D = 20, userOff = G.poss === "H";
+  if (G.phase === "kickoff" || G.phase === "punt" || (G.phase === "kick" && G.kick && G.kick.flying)) { dir = dirOf(G.kick ? G.kick.team : G.poss); D = 24; }
+  else if (G.phase === "kick") { T = { x: b.x, y: b.y }; D = 24; }
+  else if (pl && (G.phase === "live" || G.phase === "dead") && pl.carrier) { T = { x: pl.carrier.x, y: pl.carrier.y }; dir = dirOf(pl.carrier.tm); D = pl.carrier.tm === "H" ? 17 : 22; }
+  else if (pl && G.phase === "live" && b.state === "air") { T = { x: b.x, y: b.y }; D = 22; }
+  else if (pl && G.phase === "live") { T = { x: pl.qb.x, y: G.los }; D = userOff ? 20 : 25; }
+  else if (G.phase === "playcall" || G.phase === "pat") { T = { x: G.ballX, y: G.los + dirOf(G.poss) * 2 }; D = 30; }
+  else { T = { x: G.ballX, y: G.los }; D = userOff ? 20 : 25; }
   return { x: T.x, y: T.y, dir: dir, D: D };
 }
 
 function camUpdate(dt, snap) {
   if (!G) return;
   if (isM7() && R.m7) {
-    var t = camTarget(), visAtLos = R.iw / (R.m7.fx / t.D), wc = clamp((visAtLos - 34) / 30, 0, 0.85), tx = clamp(t.x * (1 - wc) + FW / 2 * wc, 9, FW - 9);
+    var t = camTarget(), tx = clamp(t.x * 0.75 + FW / 2 * 0.25, 10, FW - 10);
     if (t.dir !== R.cam.dir) { snap = true; R.cam.dir = t.dir; }
     R.cam.D = snap ? t.D : damp(R.cam.D, t.D, 3, dt);
     var ty = t.y - t.dir * R.cam.D;
@@ -158,20 +233,26 @@ function camUpdate(dt, snap) {
   R.cam.x = damp(R.cam.x, tx2, 4.5, dt); R.cam.y = damp(R.cam.y, ty2, 4, dt);
 }
 
-// facing relative to the camera
 function faceOf(p) {
   var d = R.cam.dir, f = (p.hy || 0) * d, l = (p.hx || 0) * d;
   if (Math.abs(f) >= Math.abs(l) * 0.9) return { face: f >= 0 ? "up" : "down", flip: false };
   return { face: "side", flip: l < 0 };
 }
 
+function ellipse(c, cx, cy, rx, ry, col, ring) {
+  rx = Math.max(2, rx); ry = Math.max(1, Math.round(ry)); c.fillStyle = col;
+  for (var y = -ry; y <= ry; y++) { var w = Math.round(rx * Math.sqrt(Math.max(0, 1 - (y * y) / (ry * ry + 0.01))));
+    if (ring) { c.fillRect(Math.round(cx - w), Math.round(cy + y), 1, 1); c.fillRect(Math.round(cx + w), Math.round(cy + y), 1, 1); if (Math.abs(y) === ry) c.fillRect(Math.round(cx - w), Math.round(cy + y), 2 * w + 1, 1); }
+    else c.fillRect(Math.round(cx - w), Math.round(cy + y), 2 * w + 1, 1); }
+}
+
 function drawPlayer(c, p) {
-  var q = project(p.x, p.y, 0); if (!q.vis || q.x < -30 || q.x > R.iw + 30 || q.y < -40 || q.y > R.ih + 40) return;
-  var m7 = isM7(), k = m7 ? q.s * 3.4 / 16 : 1, sx = q.x, sy = q.y;
-  if (m7 && k < 0.18) return;
-  var spr = p.spr, img, flip = false, ox = 6, oy = 15, bob = 0, fo = faceOf(p);
-  c.fillStyle = "rgba(0,0,0,0.35)"; var shw = Math.max(2, Math.round(9 * k)); c.fillRect(Math.round(sx - shw / 2), Math.round(sy - Math.max(1, k)), shw, Math.max(1, Math.round(2 * k)));
-  if (p.diveT > 0 || p.downT > 0) { img = spr.dive; ox = 8; oy = p.downT > 0 ? 7 : 9; flip = (p.hx || 0) * R.cam.dir < 0; }
+  var q = project(p.x, p.y, 0); if (!q.vis || q.x < -40 || q.x > R.iw + 40 || q.y < -60 || q.y > R.ih + 60) return;
+  var k = spriteK(q), sx = q.x, sy = q.y; if (k < 0.12) return;
+  var spr = p.spr, img, flip = false, ox = 12, oy = 30, bob = 0, fo = faceOf(p);
+  ellipse(c, sx, sy, 8 * k, 2.6 * k, "rgba(0,0,0,0.38)");
+  if (p.tm === "H" && isM7() && !G.attract) ellipse(c, sx, sy, 8 * k, 2.6 * k, G.ctl === p && !G.bot ? "#ffe94a" : shade((G.home && G.home.primary) || "#3d7bff", 0.25), true);
+  if (p.diveT > 0 || p.downT > 0) { img = spr.dive; ox = 17; oy = p.downT > 0 ? 13 : 15; flip = (p.hx || 0) * R.cam.dir < 0; }
   else if (p.cheer) { img = spr.cheer; bob = (Math.floor(p.cheer * 6) % 2) ? -2 : 0; }
   else {
     var fr = p.anim > 0 ? 1 + (Math.floor(p.anim) % 2) : 0; if (p.eng) fr = (Math.floor(G.t * 8) % 2) ? 1 : 0;
@@ -184,15 +265,27 @@ function drawPlayer(c, p) {
   R.draws++;
 }
 
-function hline(c, y, col) {
-  var a = project(-0.5, y, 0), b = project(FW + 0.5, y, 0); if (!a.vis) return;
-  var x0 = Math.max(0, Math.min(a.x, b.x)), x1 = Math.min(R.iw, Math.max(a.x, b.x)); c.fillStyle = col; c.fillRect(Math.round(x0), Math.round(a.y), Math.round(x1 - x0), 1);
+function hline(c, y, col, th) {
+  var a = project(-0.2, y, 0), b = project(FW + 0.2, y, 0); if (!a.vis) return;
+  var x0 = Math.max(0, Math.min(a.x, b.x)), x1 = Math.min(R.iw, Math.max(a.x, b.x)); c.fillStyle = col; c.fillRect(Math.round(x0), Math.round(a.y), Math.round(x1 - x0), th || 1);
 }
 function drawLines(c) {
-  if (!G || !(G.phase === "playcall" || G.phase === "presnap" || G.phase === "live" || G.phase === "dead" || G.phase === "pat")) return;
+  if (!G || !(G.phase === "playcall" || G.phase === "presnap" || G.phase === "lineup" || G.phase === "live" || G.phase === "dead" || G.phase === "pat")) return;
   if (G.phase === "dead" && G.deadT > 0.6) return;
-  hline(c, G.los, "#3d7bff");
-  if (!G.twoPt && G.phase !== "pat") { var fd = G.los + dirOf(G.poss) * G.toGo; if (Math.abs(fd - goalY(G.poss)) > 0.3) hline(c, fd, "#ffd23f"); }
+  var q0 = project(FW / 2, G.los, 0), th = isM7() && q0.vis ? Math.max(1, Math.round(q0.s * 0.12)) : 1;
+  hline(c, G.los, "#3d8bff", th);
+  if (!G.twoPt && G.phase !== "pat") { var fd = G.los + dirOf(G.poss) * G.toGo; if (Math.abs(fd - goalY(G.poss)) > 0.3) { var q = project(FW / 2, fd, 0); hline(c, fd, "#ffd23f", isM7() && q.vis ? Math.max(1, Math.round(q.s * 0.12)) : 1); } }
+}
+function drawChains(c) {
+  if (!G || !isM7() || !(G.phase === "playcall" || G.phase === "presnap" || G.phase === "lineup" || G.phase === "live" || G.phase === "dead")) return;
+  var xs = FW + 3.2;
+  function pole(y, label) { var b = project(xs, y, 0), t = project(xs, y, 2.6); if (!b.vis) return; var w = Math.max(1, Math.round(b.s * 0.15));
+    c.fillStyle = "#ff8a1a"; c.fillRect(Math.round(b.x), Math.round(t.y), w, Math.round(b.y - t.y));
+    if (label) { var bs = Math.max(7, Math.round(b.s * 0.9)); c.fillStyle = "#14141c"; c.fillRect(Math.round(t.x - bs / 2) - 1, Math.round(t.y - bs) - 1, bs + 2, bs + 2); c.fillStyle = "#ff8a1a"; c.fillRect(Math.round(t.x - bs / 2), Math.round(t.y - bs), bs, bs);
+      drawText3(c, label, Math.round(t.x - 1), Math.round(t.y - bs / 2 - 2), "#14141c", 1); }
+    else { c.fillStyle = "#ff8a1a"; c.fillRect(Math.round(t.x - 2), Math.round(t.y - 1), 5, 2); } }
+  pole(G.los, String(G.down));
+  var fd = G.los + dirOf(G.poss) * G.toGo; if (Math.abs(fd - goalY(G.poss)) > 0.3) pole(fd, null);
 }
 
 function drawGoalposts(c, y) {
@@ -202,6 +295,53 @@ function drawGoalposts(c, y) {
   c.fillStyle = "#c9a500"; c.fillRect(Math.round(base.x), Math.round(bar.y), t, Math.max(1, Math.round(base.y - bar.y)));
   c.fillStyle = "#ffd23f"; c.fillRect(Math.round(Math.min(lft.x, rgt.x)), Math.round(bar.y), Math.round(Math.abs(rgt.x - lft.x)) + 1, t);
   c.fillRect(Math.round(lft.x), Math.round(lt.y), t, Math.round(lft.y - lt.y)); c.fillRect(Math.round(rgt.x), Math.round(rt.y), t, Math.round(rgt.y - rt.y));
+}
+
+function numBadge(c, x, y, n, col) {
+  x = Math.round(x); y = Math.round(y);
+  c.fillStyle = "#0c0c14"; c.fillRect(x - 4, y - 3, 9, 9); c.fillRect(x - 3, y - 4, 7, 11);
+  c.fillStyle = col; c.fillRect(x - 3, y - 2, 7, 7); c.fillRect(x - 2, y - 3, 5, 9);
+  drawText3(c, String(n), x - 1, y - 1, "#0c0c14", 1);
+}
+function drawRoutePreview(c) {
+  if (!G || G.bot || G.poss !== "H" || !(G.phase === "presnap" || G.phase === "lineup")) return;
+  var prev = previewRoutes(); if (!prev) return;
+  prev.forEach(function (rt) {
+    var pts = rt.pts.map(function (w) { return project(w.x, w.y, 0); }); var col = rt.run ? "#ffd23f" : rt.hot ? "#4dd2ff" : "#ffffff";
+    for (var i = 1; i < pts.length; i++) { if (!pts[i - 1].vis || !pts[i].vis) continue; lineLo(c, pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, col); }
+    var a = pts[pts.length - 1], b = pts[pts.length - 2]; if (a && b && a.vis && b.vis) { var ang = Math.atan2(a.y - b.y, a.x - b.x);
+      lineLo(c, a.x, a.y, a.x - Math.cos(ang - 0.5) * 5, a.y - Math.sin(ang - 0.5) * 5, col); lineLo(c, a.x, a.y, a.x - Math.cos(ang + 0.5) * 5, a.y - Math.sin(ang + 0.5) * 5, col); }
+  });
+}
+function drawLabelsAndMarkers(c) {
+  if (!G) return;
+  var pl = G.play;
+  if (G.ctl && G.ctl.onField && !G.bot && (G.phase === "live" || G.phase === "presnap" || G.phase === "lineup")) {
+    var p = G.ctl, q0 = project(p.x, p.y, 0), k = spriteK(q0);
+    if (q0.vis) { var pulse = Math.floor(R.t * 6) % 2; c.fillStyle = pulse ? "#ffe94a" : "#ffb21a";
+      var tx = Math.round(q0.x), ty = Math.round(q0.y - 33 * k - 2); c.fillRect(tx - 3, ty - 4, 7, 1); c.fillRect(tx - 2, ty - 3, 5, 1); c.fillRect(tx - 1, ty - 2, 3, 1); c.fillRect(tx, ty - 1, 1, 1); }
+  }
+  var showNums = G.poss === "H" && !G.bot && pl && pl.off.type === "pass" && !pl.thrown && !pl.crossed && (G.phase === "live" || G.phase === "presnap" || G.phase === "lineup");
+  if (showNums) {
+    RECV_KEYS.forEach(function (kk) { var r = byRole("H", kk.role); if (!r || !r.onField) return;
+      if (G.phase === "live" && r.assign !== "route") return;
+      if (G.phase !== "live" && !isEligibleRoute(kk.role)) return;
+      var o = G.phase === "live" ? openness(r, "A") : 3, col = G.phase !== "live" ? "#ffd23f" : o > 2.6 ? "#4dff6a" : o > 1.4 ? "#ffd23f" : "#ff4a3a";
+      var q = project(r.x, r.y, 0); if (!q.vis) return; var kq = spriteK(q);
+      numBadge(c, q.x + (G.phase === "live" ? 0 : -13 * kq), q.y - (G.phase === "live" ? 40 * kq : 16 * kq), kk.key, col); });
+  }
+  if (G.ball.state === "air") { var lq = project(G.ball.x1, G.ball.y1, 0); if (lq.vis) { var kk2 = spriteK(lq); ellipse(c, lq.x, lq.y, 6 * kk2, 2 * kk2, Math.floor(R.t * 8) % 2 ? "#ffffff" : "#ffd23f", true); } }
+}
+var RECV_KEYS = [{ role: "WR1", key: "1" }, { role: "WR2", key: "2" }, { role: "WR3", key: "3" }, { role: "TE", key: "4" }, { role: "RB", key: "5" }];
+
+function drawBallAll(c) {
+  var b = G.ball, z = b.z || 0, g = project(b.x, b.y, 0); if (!g.vis) return;
+  if (b.state === "air" || b.state === "kick" || b.state === "loose") { var kk = spriteK(g); ellipse(c, g.x, g.y, 2.5 * kk, 1 * kk, "rgba(0,0,0,0.35)"); }
+  var q = project(b.x, b.y, z), k = isM7() ? clamp(spriteK(q) * 1.1, 0.5, 2.5) : 1;
+  var w = Math.max(3, Math.round(6 * k)), h = Math.max(2, Math.round(4 * k)), x = Math.round(q.x - w / 2), y = Math.round(q.y - h / 2);
+  c.fillStyle = "#2a1206"; c.fillRect(x - 1, y, w + 2, h); c.fillRect(x, y - 1, w, h + 2);
+  c.fillStyle = "#8a4a1c"; c.fillRect(x, y, w, h); c.fillStyle = "#b0652c"; c.fillRect(x + 1, y, Math.max(1, w - 3), 1);
+  c.fillStyle = "#f4f0e0"; c.fillRect(x + Math.floor(w / 2) - 1, y + Math.floor(h / 2), Math.max(2, Math.round(w / 3)), 1);
 }
 
 function drawLights(c) {
@@ -224,38 +364,6 @@ function drawCrowdFlicker(c) {
   }
 }
 
-function drawLabelsAndMarkers(c) {
-  if (!G) return;
-  var pl = G.play;
-  if (G.ctl && G.ctl.onField && !G.bot && (G.phase === "live" || G.phase === "presnap")) {
-    var p = G.ctl, q = project(p.x, p.y, 0), hd = project(p.x, p.y, 3.2); if (q.vis) {
-      var w = Math.max(5, Math.round(q.s * 1.3)), pulse = Math.floor(R.t * 6) % 2;
-      c.fillStyle = pulse ? "#ffe94a" : "#ffb21a"; c.fillRect(Math.round(q.x - w), Math.round(q.y), w * 2 + 1, 1); c.fillRect(Math.round(q.x - w + 1), Math.round(q.y + 1), w * 2 - 1, 1);
-      c.fillStyle = "#ffe94a"; c.fillRect(Math.round(hd.x - 2), Math.round(hd.y - 4), 5, 1); c.fillRect(Math.round(hd.x - 1), Math.round(hd.y - 3), 3, 1); c.fillRect(Math.round(hd.x), Math.round(hd.y - 2), 1, 1);
-    }
-  }
-  if (G.poss === "H" && !G.bot && pl && (G.phase === "live" || G.phase === "presnap") && pl.off.type === "pass" && !pl.thrown && !pl.crossed) {
-    RECV_KEYS.forEach(function (k) { var r = byRole("H", k.role); if (!r || !r.onField) return;
-      if (G.phase === "live" && r.assign !== "route") return; if (G.phase === "presnap" && !(pl.off.routes[k.role] && ROUTES[pl.off.routes[k.role]])) return;
-      var o = G.phase === "live" ? openness(r, "A") : 3, col = o > 2.6 ? "#4dff6a" : o > 1.4 ? "#ffd23f" : "#ff4a3a";
-      var q2 = project(r.x, r.y, 3.4); if (!q2.vis) return; var sx = Math.round(q2.x), sy = Math.round(q2.y) - 10;
-      c.fillStyle = "#0c0c14"; c.fillRect(sx - 4, sy - 1, 9, 9); c.fillStyle = col; c.fillRect(sx - 3, sy, 7, 7);
-      drawText3(c, k.key, sx - 1, sy + 1, "#0c0c14", 1); c.fillStyle = "#0c0c14"; c.fillRect(sx, sy + 8, 1, 2); });
-  }
-  if (G.ball.state === "air") { var lq = project(G.ball.x1, G.ball.y1, 0); if (lq.vis) { var lx = Math.round(lq.x), ly = Math.round(lq.y); c.fillStyle = Math.floor(R.t * 8) % 2 ? "#ffffff" : "#ffd23f";
-    c.fillRect(lx - 3, ly, 7, 1); c.fillRect(lx, ly - 2, 1, 5); } }
-}
-var RECV_KEYS = [{ role: "WR1", key: "A" }, { role: "WR2", key: "B" }, { role: "WR3", key: "C" }, { role: "TE", key: "D" }, { role: "RB", key: "E" }];
-
-function drawBallAll(c) {
-  var b = G.ball, z = b.z || 0, g = project(b.x, b.y, 0); if (!g.vis) return;
-  var zz = b.state === "held" ? z * 1.4 : z;
-  if (b.state === "air" || b.state === "kick" || b.state === "loose") { c.fillStyle = "rgba(0,0,0,0.35)"; c.fillRect(Math.round(g.x - 2), Math.round(g.y), 4, 1); }
-  var q = project(b.x, b.y, zz); var k = isM7() ? clamp(q.s / 6, 0.6, 2.2) : 1;
-  if (k > 1.4) { c.fillStyle = "#3a1a08"; c.fillRect(Math.round(q.x - 3), Math.round(q.y - 2), 7, 4); c.fillStyle = "#8a4a1c"; c.fillRect(Math.round(q.x - 2), Math.round(q.y - 2), 5, 4); c.fillStyle = "#f4f0e0"; c.fillRect(Math.round(q.x), Math.round(q.y - 1), 1, 2); }
-  else drawBall(c, Math.round(q.x), Math.round(q.y));
-}
-
 function drawFog(c) {
   if (!G || G.half < 2) return;
   var t = R.t;
@@ -272,43 +380,36 @@ function drawFx(c) {
 }
 
 // ---- Mode 7 ----
-function buildPano() {
-  var W = R.iw * 3, H = R.m7.hY + 2, cv = makeCanvas(W, H), c = cv.getContext("2d"), rng = mulberry32(77);
-  var g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#04061a"); g.addColorStop(0.7, "#0d1440"); g.addColorStop(1, "#1b2160");
-  c.fillStyle = g; c.fillRect(0, 0, W, H);
-  for (var i = 0; i < W * H / 260; i++) { c.fillStyle = rng() < 0.7 ? "#9aa8ff" : "#ffffff"; c.fillRect(Math.floor(rng() * W), Math.floor(rng() * H * 0.55), 1, 1); }
-  var sh = Math.max(10, Math.round(H * 0.42)), sy = H - sh;
-  // stands
-  c.fillStyle = "#23252f"; c.fillRect(0, sy, W, sh);
-  var home = G.userAway ? G.away : G.home, away = G.userAway ? G.home : G.away;
-  for (var x = 0; x < W; x += 2) for (var y = sy + 2; y < H - 2; y += 2) { if (rng() < 0.8) { var r = rng(), tm = x < W / 2 ? home : away;
-    c.fillStyle = r < 0.32 ? tm.primary : r < 0.45 ? tm.secondary : r < 0.62 ? "#e8e0d0" : r < 0.78 ? SKINS[Math.floor(rng() * 4)] : "#15161d"; c.fillRect(x, y, 2, 1); } }
-  c.fillStyle = "#3a3d4a"; for (var y2 = sy; y2 < H; y2 += 4) c.fillRect(0, y2, W, 1);
-  c.fillStyle = "#9aa0aa"; c.fillRect(0, H - 2, W, 1);
-  // press box + light towers
-  var pbx = Math.round(W / 2 - 18); c.fillStyle = "#2c2f3a"; c.fillRect(pbx, sy - 9, 36, 9); c.fillStyle = "#ffe9a0"; for (var w = 0; w < 7; w++) c.fillRect(pbx + 2 + w * 5, sy - 7, 3, 3);
-  for (var t = 0; t < 6; t++) { var lx = Math.round(W * (0.08 + t * 0.168)); c.fillStyle = "#4a4e58"; c.fillRect(lx, sy - 26, 2, 26);
-    c.fillStyle = "rgba(255,245,200,0.12)"; c.fillRect(lx - 12, sy - 40, 26, 18); c.fillStyle = "#2a2c34"; c.fillRect(lx - 6, sy - 34, 14, 8);
-    c.fillStyle = "#fffbe0"; for (var a = 0; a < 4; a++) for (var b = 0; b < 2; b++) c.fillRect(lx - 5 + a * 3, sy - 33 + b * 4, 2, 2); }
-  R.pano = cv; R.panoKey = R.fieldKey + R.iw;
-}
+
+// ---- Mode 7 world ----
 function renderM7(c) {
-  var m = R.m7, d = R.cam.dir, tex = d > 0 ? R.tex.cv : R.texR, T = R.tex;
-  if (!R.pano || R.panoKey !== R.fieldKey + R.iw) buildPano();
-  var off = Math.round(((R.cam.x * d) * 3) % R.iw); c.drawImage(R.pano, -R.iw + off, 0); R.draws++;
-  // flicker crowd in the backdrop
-  var rng = mulberry32(Math.floor(R.t * 6)), shTop = Math.round(m.hY * 0.58);
-  for (var i = 0; i < 40; i++) { c.fillStyle = rng() < 0.5 ? "#ffffff" : "#ffd23f"; c.fillRect(Math.floor(rng() * R.iw), shTop + Math.floor(rng() * (m.hY - shTop - 2)), 1, 1); }
+  var m = R.m7, d = R.cam.dir, tex = d > 0 ? R.tex.cv : R.texR, T = R.tex, cx = R.iw / 2;
+  var gr = c.createLinearGradient(0, 0, 0, Math.max(10, m.hY + R.ih * 0.25)); gr.addColorStop(0, "#03040e"); gr.addColorStop(1, "#141a48");
+  c.fillStyle = gr; c.fillRect(0, 0, R.iw, R.ih);
   for (var sy = m.hY + 1; sy < R.ih; sy++) {
     var dz = m.k / (sy - m.hY + 0.5), wyRow = R.cam.y + d * dz, half = (R.iw / 2) * dz / m.fx, xl = R.cam.x - d * half;
     var colL = (xl + T.MX) * T.PX, rowY = T.H - (wyRow + T.MY) * T.PY;
     var sxT = d > 0 ? colL : T.W - colL, syT = d > 0 ? rowY : T.H - rowY;
-    if (syT < 0 || syT >= T.H) { c.fillStyle = "#16171f"; c.fillRect(0, sy, R.iw, 1); continue; }
+    if (syT < 0 || syT >= T.H) continue;
     c.drawImage(tex, sxT, Math.floor(syT), 2 * half * T.PX, 1, 0, sy, R.iw, 1);
   }
   R.draws += R.ih - m.hY;
-  // horizon haze
-  for (var h = 0; h < 10; h++) { c.fillStyle = "rgba(14,18,48," + (0.5 - h * 0.05).toFixed(2) + ")"; c.fillRect(0, m.hY + h * 2, R.iw, 2); }
+  var fr = Math.floor(R.t * 3) % 2;
+  var leftX = d > 0 ? -WALL_X : FW + WALL_X, rightX = d > 0 ? FW + WALL_X : -WALL_X;
+  var Ll = (leftX - R.cam.x) * d, Lr = (rightX - R.cam.x) * d;
+  var endY = d > 0 ? FL + END_Y : -END_Y, dzE = (endY - R.cam.y) * d;
+  var leftW = d > 0 ? R.walls.home : R.walls.away, rightW = d > 0 ? R.walls.away : R.walls.home, endW = d > 0 ? R.walls.endA : R.walls.endH;
+  if (dzE > 1) { var sl = cx + m.fx * Ll / dzE, sr = cx + m.fx * Lr / dzE, base = m.hY + m.k / dzE, top = base - WALL_H * m.fx / dzE;
+    c.drawImage(endW.f[fr], 0, 0, endW.W, endW.H, Math.round(sl), Math.round(top), Math.round(sr - sl), Math.round(base - top)); }
+  function wallCol(sx, L, wall) {
+    var dz2 = m.fx * L / (sx + 0.5 - cx); if (dz2 < 1 || (dzE > 1 && dz2 > dzE)) return;
+    var base2 = m.hY + m.k / dz2, top2 = base2 - WALL_H * m.fx / dz2; if (top2 > R.ih) return;
+    var u = ((R.cam.y + d * dz2) * wall.PX) % wall.W; if (u < 0) u += wall.W;
+    c.drawImage(wall.f[fr], Math.floor(u), 0, 1, wall.H, sx, Math.round(top2), 1, Math.round(base2 - top2) + 1);
+  }
+  for (var x = 0; x < cx; x++) wallCol(x, Ll, leftW);
+  for (var x2 = Math.ceil(cx); x2 < R.iw; x2++) wallCol(x2, Lr, rightW);
+  R.draws += R.iw;
 }
 
 function renderFrame(dt) {
@@ -325,10 +426,11 @@ function renderFrame(dt) {
     drawCrowdFlicker(c);
   }
   drawLines(c);
-  // far goalpost first, players by depth, near goalpost last
+  drawRoutePreview(c);
   var gpA = project(FW / 2, 0, 0), gpB = project(FW / 2, 120, 0);
   var farFirst = (gpA.dz || 0) > (gpB.dz || 0) ? [0, 120] : [120, 0];
   drawGoalposts(c, farFirst[0]);
+  drawChains(c);
   var list = G.players.filter(function (p) { return p.onField; });
   list.forEach(function (p) { p._dz = m7 ? (p.y - R.cam.y) * R.cam.dir : -p.y; });
   list.sort(function (a, b) { return b._dz - a._dz; });
@@ -340,14 +442,15 @@ function renderFrame(dt) {
   drawFog(c);
   if (!m7) drawLights(c);
   if (!R.vign || R.vign.width !== R.iw || R.vign.height !== R.ih) {
-    R.vign = makeCanvas(R.iw, R.ih); var vc = R.vign.getContext("2d"), gr = vc.createRadialGradient(R.iw / 2, R.ih / 2, Math.min(R.iw, R.ih) * 0.35, R.iw / 2, R.ih / 2, Math.max(R.iw, R.ih) * 0.75);
-    gr.addColorStop(0, "rgba(5,8,25,0)"); gr.addColorStop(1, "rgba(5,8,25,0.5)"); vc.fillStyle = gr; vc.fillRect(0, 0, R.iw, R.ih);
+    R.vign = makeCanvas(R.iw, R.ih); var vc = R.vign.getContext("2d"), gr = vc.createRadialGradient(R.iw / 2, R.ih / 2, Math.min(R.iw, R.ih) * 0.4, R.iw / 2, R.ih / 2, Math.max(R.iw, R.ih) * 0.8);
+    gr.addColorStop(0, "rgba(5,8,25,0)"); gr.addColorStop(1, "rgba(5,8,25,0.4)"); vc.fillStyle = gr; vc.fillRect(0, 0, R.iw, R.ih);
   }
   c.drawImage(R.vign, 0, 0);
-  if (P("scanlines")) { c.fillStyle = "rgba(0,0,0,0.12)"; for (var y = 1; y < R.ih; y += 2) c.fillRect(0, y, R.iw, 1); }
+  if (P("scanlines")) { c.fillStyle = "rgba(0,0,0,0.10)"; for (var y = 1; y < R.ih; y += 2) c.fillRect(0, y, R.iw, 1); }
   blit();
 }
 function blit() {
   var x = R.ctx; x.imageSmoothingEnabled = false; x.setTransform(1, 0, 0, 1, 0, 0);
   x.drawImage(R.lo, 0, 0, R.iw, R.ih, 0, 0, Math.round(R.iw * R.ps * R.dpr), Math.round(R.ih * R.ps * R.dpr));
 }
+

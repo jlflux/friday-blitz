@@ -7,7 +7,7 @@ await p.waitForFunction(() => window.__game && window.__game.info().st === "intr
 await p.evaluate(() => window.__game.begin());
 const out = { selects: 0, autoSwitch: 0, plays: 0, waitedOk: 0 };
 for (let k = 0; k < 4000 && out.plays < 6; k++) {
-  const s = await p.evaluate(() => { const g = window.__game, G = g._g(); if (G.phase === "playcall") { if (G.poss === "H") g._sim.userCall("off", "dive"); else g._sim.userCall("def", "cover2"); } if (G.phase === "pat") g._sim.userPAT("kick"); if (G.phase === "kick") g._sim.kickTap(); g.step(3); return { ph: G.phase, poss: G.poss, t: G.phaseT }; });
+  const s = await p.evaluate(() => { const g = window.__game, G = g._g(); if (G.phase === "playcall") { if (G.poss === "H") g._sim.userCall("off", "dive"); else g._sim.userCall("def", "cover2"); } if (G.phase === "pat") g._sim.userPAT("kick"); if ((G.phase === "presnap" || G.phase === "lineup") && G.poss === "H") g._sim.requestSnap(); if (G.phase === "kick") g._sim.kickTap(); g.step(3); return { ph: G.phase, poss: G.poss, t: G.phaseT }; });
   if (s.ph === "presnap" && s.poss === "A") {
     // tap the free safety on screen
     const pt = await p.evaluate(() => { const G = window.__game._g(), fs = G.players.find(x => x.tm === "H" && x.role === "CB1" && x.onField); const q = window.__game.project(fs.x, 1.2, fs.y); return { x: q.x, y: q.y, on: q.on, role: fs.role }; });

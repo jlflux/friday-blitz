@@ -193,11 +193,15 @@ var App = {
       var k = e.key.toLowerCase(); App.keys[k] = true; audioInit();
       if (App.st !== "play") return;
       if (k === "escape" || k === "p") { App.pause(!App.paused); return; }
+      if ((k === " " || k === "enter") && (G.phase === "presnap" || G.phase === "lineup") && G.poss === "H") { UI.closeMenu(); requestSnap(); e.preventDefault(); return; }
+      if (k === "t" && (G.phase === "presnap" || G.phase === "lineup" || G.phase === "playcall")) { if (callTimeout("H")) { UI.dockKey = ""; if (G.phase === "playcall") UI.showPlaycall(); } return; }
+      if (k === "h" && (G.phase === "presnap" || G.phase === "lineup") && G.poss === "H") { UI.hotMenu(); return; }
+      if (k === "y" && (G.phase === "presnap" || G.phase === "lineup")) { UI.audMenu(); return; }
       if (k === " " || k === "j") { if (G.phase === "kick") kickTap(); else if (G.play && G.play.carrier && G.play.carrier.tm === "H") App.inp.juke = true; else App.inp.dive = true; e.preventDefault(); }
       if (k === "shift" || k === "q") App.inp.sw = true;
       var map = { "1": "WR1", "2": "WR2", "3": "WR3", "4": "TE", "5": "RB", z: "WR1", x: "WR2", c: "WR3", v: "TE", b: "RB" };
       if (G.phase === "live" && map[k]) App.inp.throwTo = map[k];
-      if (G.phase === "playcall" && /^[1-6]$/.test(k)) { var i = +k - 1; if (G.poss === "H" && PLAYS[i]) { userCall("off", PLAYS[i].id, UI.flip); UI.closePanels(); } else if (G.poss === "A" && DEFS[i]) { userCall("def", DEFS[i].id); UI.closePanels(); } }
+      if (G.phase === "playcall" && /^[1-9]$/.test(k) && UI.pcIds) { var id = UI.pcIds[+k - 1]; if (id) { if (G.poss === "H") userCall("off", id, UI.flip); else userCall("def", id); UI.closePanels(); } }
       if (G.phase === "pat" && (k === "1" || k === "2")) { UI.closePanels(); userPAT(k === "1" ? "kick" : "two"); }
       if (k.indexOf("arrow") === 0) e.preventDefault();
     });
@@ -218,7 +222,7 @@ var App = {
     var kx = (k["arrowright"] || k["d"] ? 1 : 0) - (k["arrowleft"] || k["a"] ? 1 : 0), ky = (k["arrowdown"] || k["s"] ? 1 : 0) - (k["arrowup"] || k["w"] ? 1 : 0);
     if (kx || ky) { var l = Math.sqrt(kx * kx + ky * ky); mx = kx / l; my = ky / l; }
     // screen -> world: screen up = +y
-    var i = App.inp, cd = R.cam.dir || 1; return { mx: mx * cd, my: -my * cd, juke: i.juke, dive: i.dive, sw: i.sw, throwTo: i.throwTo };
+    var i = App.inp, cd = R.cam.dir || 1; return { mx: mx * cd, my: -my * cd, juke: i.juke, dive: i.dive, sw: i.sw, throwTo: i.throwTo, sprint: !!(i.sprintHeld || k["e"] || k["l"]) };
   },
   clearEdges: function () { var i = App.inp; i.juke = false; i.dive = false; i.sw = false; i.throwTo = null; },
   advance: function (dt, inp) {
@@ -318,7 +322,7 @@ var GAME_API = {
   probe: function () { var c = G && G.ctl; return { hero: c ? { x: c.x, y: 0, z: c.y, yaw: 0, scale: 1 } : null, camera: { x: R.cam.x, y: 0, z: R.cam.y }, threats: G ? G.players.filter(function (p) { return p.onField && p.tm !== G.poss; }).length : 0 }; },
   project: function (x, y, z) { return projectCss(x, z !== undefined ? z : y, 0); },
   // QA helpers
-  _g: function () { return G; }, _fr: function () { return FR; }, _sim: { beginPlayCall: function () { beginPlayCall(); }, userCall: function (a, b, c) { userCall(a, b, c); }, kickTap: function () { kickTap(); }, userPAT: function (c) { userPAT(c); } }, _app: function () { return App; }, _ui: function () { return UI; }
+  _g: function () { return G; }, _fr: function () { return FR; }, _sim: { beginPlayCall: function () { beginPlayCall(); }, userCall: function (a, b, c) { userCall(a, b, c); }, kickTap: function () { kickTap(); }, userPAT: function (c) { userPAT(c); }, requestSnap: function () { requestSnap(); }, callTimeout: function (t) { return callTimeout(t); }, setHot: function (r, rt) { setHot(r, rt); }, audible: function (id) { userAudible(id); }, defAudible: function (id) { userDefAudible(id); } }, _app: function () { return App; }, _ui: function () { return UI; }
 };
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", App.boot); else App.boot();

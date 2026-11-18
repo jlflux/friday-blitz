@@ -31,13 +31,15 @@ var UI = {
       '<div class="opt"><div class="ol" id="lQtr"></div><div class="stepper"><button class="btn sm" id="qMinus">-</button><span id="qVal"></span><button class="btn sm" id="qPlus">+</button></div></div>',
       '<div class="row2"><button class="btn sec" id="bBack"></button><button class="btn big pri" id="bKick"></button></div></div>',
       '<div id="editor" class="scr hidden"><div class="etabs"><button class="tab" id="tabTeam"></button><button class="tab" id="tabRoster"></button><button class="btn pri sm" id="bDone"></button></div><div id="ebody"></div></div>',
-      '<div id="hud" class="hidden"><button class="btn icon" id="bPause" data-cover="1">II</button><div id="board"><div class="tm" id="hTm"><span class="ab" id="hAb"></span><span class="sc" data-hud="home" id="hSc">0</span></div>',
-      '<div class="clk"><div id="qtr"></div><div id="clock" data-hud="clock"></div></div><div class="tm" id="aTm"><span class="sc" data-hud="away" id="aSc">0</span><span class="ab" id="aAb"></span></div></div>',
-      '<button class="btn icon" id="bMute">&#9835;</button><div id="dd" data-goal="1"></div></div>',
+      '<div id="hud" class="hidden"><div id="tag"><canvas id="tagCv" width="24" height="32"></canvas><div class="tgt"><div id="tagN"></div><div id="tagP"></div></div></div>',
+      '<div id="board"><div class="tm" id="hTm"><span class="ab" id="hAb"></span><span class="tos" id="hTo"></span><span class="sc" data-hud="home" id="hSc">0</span></div>',
+      '<div class="tm" id="aTm"><span class="ab" id="aAb"></span><span class="tos" id="aTo"></span><span class="sc" data-hud="away" id="aSc">0</span></div>',
+      '<div class="clk"><span id="qtr"></span><span id="clock" data-hud="clock"></span></div><div id="dd" data-goal="1"></div><div id="pclk"></div></div>',
+      '<div class="tr"><button class="btn icon" id="bMute">&#9835;</button><button class="btn icon" id="bPause" data-cover="1">II</button></div></div>',
       '<div id="banner" data-cover="1"></div><div id="hint" data-cover="1"></div><div id="ticker" data-cover="1"></div>',
       '<div id="dock" class="hidden"><div id="dockL"></div><div id="dockR"></div></div>',
       '<div id="joy" class="hidden"><div id="knob"></div></div>',
-      '<div id="playcall" class="panel hidden"></div><div id="pat" class="panel hidden"></div>',
+      '<div id="playcall" class="panel hidden"></div><div id="pat" class="panel hidden"></div><div id="menu" class="panel mini hidden"></div>',
       '<div id="meter" class="hidden"><div class="mt" id="mTitle"></div><div id="mbar"><div id="mwin"></div><div id="mneedle"></div></div><div class="mh" id="mHint"></div></div>',
       '<div id="pause" class="scr dim hidden"><div class="ph" id="pTitle"></div><button class="btn big pri" id="pRes"></button><button class="btn sec" id="pCam"></button><button class="btn sec" id="pRst"></button><button class="btn sec" id="pQuit"></button></div>',
       '<div id="end" class="hidden"><div class="dim2"></div><div class="rays"></div><div class="ecwrap"><div class="ec-copy-panel" data-end-copy-panel="1"><div class="eid" data-end-id="1"><img id="eIcon" alt=""><span id="eName"></span></div>',
@@ -221,15 +223,26 @@ var UI = {
     $("hTm").style.color = lum(h.primary) > 150 ? "#101018" : "#fff"; $("aTm").style.color = lum(a.primary) > 150 ? "#101018" : "#fff";
     $("hAb").textContent = h.abbr; $("aAb").textContent = a.abbr; $("hSc").textContent = G.score.H; $("aSc").textContent = G.score.A;
     $("hTm").classList.toggle("poss", G.poss === "H"); $("aTm").classList.toggle("poss", G.poss === "A");
+    var tos = G.tos || { H: 3, A: 3 }, tk = tos.H + "|" + tos.A;
+    if (UI.toKey !== tk) { UI.toKey = tk; ["H", "A"].forEach(function (t) { $(t === "H" ? "hTo" : "aTo").innerHTML = [0, 1, 2].map(function (i) { return '<i class="' + (i < tos[t] ? "on" : "") + '"></i>'; }).join(""); }); }
     $("qtr").textContent = G.ot ? T("qot") : T("q" + Math.min(4, G.quarter));
-    var m = Math.floor(G.clock / 60), s = Math.floor(G.clock % 60); $("clock").textContent = G.ot ? "--:--" : m + ":" + (s < 10 ? "0" : "") + s;
-    $("clock").classList.toggle("red", G.half === 2);
+    var m = Math.floor(G.clock / 60), sec = Math.floor(G.clock % 60); $("clock").textContent = G.ot ? "--:--" : m + ":" + (sec < 10 ? "0" : "") + sec;
+    $("clock").classList.toggle("red", G.clock < 60 && !G.ot);
     var dd = "";
-    if (G.phase === "playcall" || G.phase === "presnap" || G.phase === "live" || G.phase === "dead") {
+    if (G.phase === "playcall" || G.phase === "presnap" || G.phase === "lineup" || G.phase === "live" || G.phase === "dead") {
       var goalToGo = (100 - ydFromOwn(G.poss, G.los)) <= G.toGo;
-      if (G.twoPt) dd = T("pat.two"); else dd = T("hud.down", { d: T("d" + G.down), g: goalToGo ? T("hud.goal") : G.toGo }) + " · " + spotText();
+      if (G.twoPt) dd = T("pat.two"); else dd = T("hud.down", { d: T("d" + G.down), g: goalToGo ? T("hud.goal") : G.toGo });
     }
-    $("dd").textContent = dd; $("dd").style.visibility = dd ? "visible" : "hidden";
+    $("dd").textContent = dd; $("dd").style.display = dd ? "" : "none";
+    var showPc = !G.bot && (G.phase === "playcall" || G.phase === "presnap" || G.phase === "lineup");
+    var pc = Math.ceil(G.pclock || 0); $("pclk").textContent = showPc ? pc : ""; $("pclk").style.display = showPc ? "" : "none"; $("pclk").classList.toggle("low", pc <= 5);
+    // controlled player name tag
+    var c = (!G.bot && (G.phase === "presnap" || G.phase === "lineup" || G.phase === "live")) ? G.ctl : null, tag = $("tag");
+    if (c && c.tm === "H") {
+      if (UI.tagP !== c) { UI.tagP = c; var cv = $("tagCv"), cx = cv.getContext("2d"); cx.clearRect(0, 0, 24, 32); if (c.spr && c.spr.down) cx.drawImage(c.spr.down[0], 0, 0);
+        $("tagN").textContent = "#" + c.r.num + " " + roleLabel(c.role); $("tagP").textContent = String(c.r.name || "").toUpperCase(); }
+      tag.style.visibility = "visible";
+    } else { tag.style.visibility = "hidden"; UI.tagP = null; }
   },
   onPhase: function (ph) {
     if (!G || G.attract) return;
@@ -239,7 +252,9 @@ var UI = {
     }
     if (ph === "pat") UI.showPAT();
     if (ph === "kick" && G.kick && G.kick.team === "H" && !G.bot) { $("meter").classList.remove("hidden"); UI.hintOnce("kick"); }
+    if (ph !== "presnap" && ph !== "lineup") UI.closeMenu();
     if (ph === "presnap" && G.poss === "A" && !G.bot) UI.hintOnce("pick", 3);
+    if (ph === "presnap" && G.poss === "H" && !G.bot) UI.hintOnce("snap", 3);
     if (ph === "live") { var pl = G.play; if (G.poss === "H") UI.hintOnce(pl.off.type === "pass" ? "offense" : "run"); else UI.hintOnce("defense"); }
     if (ph === "final") setTimeout(function () {}, 0);
     UI.hud(); UI.dock();
@@ -248,53 +263,105 @@ var UI = {
   hint: function (txt) { if (UI.endShown) return; var h = $("hint"); h.textContent = txt; h.classList.add("show"); clearTimeout(UI.hintTO); UI.hintTO = setTimeout(function () { h.classList.remove("show"); }, 3600); },
   showPlaycall: function () {
     if (G.bot) return;
-    var pc = $("playcall"); pc.innerHTML = ""; pc.classList.remove("hidden");
-    var off = G.poss === "H";
-    pc.appendChild(el("div", "pct", esc(T(off ? "pc.offense" : "pc.defense"))));
-    var sit = el("div", "pcs", esc($("dd").textContent)); pc.appendChild(sit);
-    var grid = el("div", "pcg" + (off ? "" : " def"));
+    var pc = $("playcall"); pc.innerHTML = ""; pc.classList.remove("hidden"); pc.classList.add("pcall");
+    var off = G.poss === "H"; UI.pcIds = [];
+    var top = el("div", "pctop");
+    top.appendChild(el("span", "ptag " + (off ? "o" : "d"), esc(T(off ? "pc.offense" : "pc.defense"))));
+    var goalTG = (100 - ydFromOwn(G.poss, G.los)) <= G.toGo; top.appendChild(el("span", "psit", esc((G.twoPt ? T("pat.two") : T("hud.down", { d: T("d" + G.down), g: goalTG ? T("hud.goal") : G.toGo })) + " · " + spotText())));
+    var sp = el("span", "pspacer"); top.appendChild(sp);
+    var to = el("button", "btn xs2 tob", esc(T("btn.to")) + " " + ((G.tos && G.tos.H) || 0)); if (!G.tos || G.tos.H <= 0) to.disabled = true;
+    onTap(to, function () { if (callTimeout("H")) UI.showPlaycall(); }); top.appendChild(to);
     if (off) {
-      var flip = !!UI.flip;
-      PLAYS.forEach(function (p) {
-        var b = el("button", "pcard"); var cv = makeCanvas(40, 26); cv.className = "pcv"; UI.drawPlayDiagram(cv, p, flip);
-        b.appendChild(cv); b.appendChild(el("span", "", esc(T("play." + p.id)))); onTap(b, function () { userCall("off", p.id, UI.flip); UI.closePanels(); }); grid.appendChild(b); });
-      pc.appendChild(grid);
-      var row = el("div", "pcr"); var fb = el("button", "btn sm" + (flip ? " on" : ""), "⇄ " + esc(T("pc.flip")));
-      onTap(fb, function () { UI.flip = !UI.flip; UI.showPlaycall(); }); row.appendChild(fb);
+      var nh = el("button", "btn xs2" + (G.noHuddle ? " on" : ""), esc(T("pc.nohud"))); onTap(nh, function () { G.noHuddle = !G.noHuddle; UI.showPlaycall(); }); top.appendChild(nh);
+      var fb = el("button", "btn xs2" + (UI.flip ? " on" : ""), "⇄ " + esc(T("pc.flip"))); onTap(fb, function () { UI.flip = !UI.flip; UI.showPlaycall(); }); top.appendChild(fb);
       var lateHalf = (G.quarter === 2 || G.quarter === 4) && G.clock < 40;
       if ((G.down === 4 || lateHalf) && !G.twoPt) {
         var distFG = Math.round(100 - ydFromOwn("H", G.los) + 17);
-        if (!G.ot && G.down === 4) { var pb = el("button", "btn sm sec", esc(T("pc.punt"))); onTap(pb, function () { userCall("punt"); UI.closePanels(); }); row.appendChild(pb); }
-        if (distFG <= 60) { var fg = el("button", "btn sm sec", esc(T("pc.fg", { n: distFG }))); onTap(fg, function () { userCall("fg"); UI.closePanels(); }); row.appendChild(fg); }
+        if (!G.ot && G.down === 4) { var pb = el("button", "btn xs2 sec", esc(T("pc.punt"))); onTap(pb, function () { userCall("punt"); UI.closePanels(); }); top.appendChild(pb); }
+        if (distFG <= 60) { var fg = el("button", "btn xs2 sec", esc(T("pc.fg", { n: distFG }))); onTap(fg, function () { userCall("fg"); UI.closePanels(); }); top.appendChild(fg); }
       }
-      pc.appendChild(row);
-    } else {
-      DEFS.forEach(function (d) { var b = el("button", "pcard"); var cv = makeCanvas(40, 26); cv.className = "pcv"; UI.drawDefDiagram(cv, d);
-        b.appendChild(cv); b.appendChild(el("span", "", esc(T("def." + d.id)))); onTap(b, function () { userCall("def", d.id); UI.closePanels(); }); grid.appendChild(b); });
-      pc.appendChild(grid);
     }
+    pc.appendChild(top);
+    var grid = el("div", "pcg" + (off ? "" : " def"));
+    if (off) {
+      var coach = coachPick(), cp = playById(coach);
+      UI.form = UI.form || "gun";
+      var tabs = el("div", "ftabs");
+      FORM_ORDER.forEach(function (f) { var t = el("button", "ftab" + (UI.form === f ? " on" : ""), esc(FORM_NAMES[f])); onTap(t, function () { UI.form = f; UI.showPlaycall(); }); tabs.appendChild(t); });
+      pc.appendChild(tabs);
+      var add = function (p, isCoach) {
+        var b = el("button", "pcard" + (isCoach ? " coach" : "")); var cv = makeCanvas(48, 30); cv.className = "pcv"; UI.drawPlayDiagram(cv, p, !!UI.flip);
+        if (isCoach) b.appendChild(el("span", "ctag", esc(T("pc.coach"))));
+        b.appendChild(cv); b.appendChild(el("span", "pn", esc(p.name))); if (isCoach) b.appendChild(el("span", "pf", esc(FORM_NAMES[p.form])));
+        onTap(b, function () { userCall("off", p.id, UI.flip); UI.closePanels(); }); grid.appendChild(b); UI.pcIds.push(p.id);
+      };
+      add(cp, true);
+      PLAYS.forEach(function (p) { if (p.form === UI.form) add(p, false); });
+    } else {
+      var saveR = G.rng; G.rng = mulberry32((G.drives * 97 + G.down * 13 + Math.round(G.los)) >>> 0); var cd = cpuDefenseCall(); G.rng = saveR;
+      var addD = function (d, isCoach) { var b = el("button", "pcard" + (isCoach ? " coach" : "")); var cv = makeCanvas(48, 30); cv.className = "pcv"; UI.drawDefDiagram(cv, d);
+        if (isCoach) b.appendChild(el("span", "ctag", esc(T("pc.coach"))));
+        b.appendChild(cv); b.appendChild(el("span", "pn", esc(d.name))); onTap(b, function () { userCall("def", d.id); UI.closePanels(); }); grid.appendChild(b); UI.pcIds.push(d.id); };
+      addD(defById(cd), true);
+      DEFS.forEach(function (d) { addD(d, false); });
+    }
+    pc.appendChild(grid);
     UI.hintOnce("playcall");
     UI.dock();
   },
-  closePanels: function () { $("playcall").classList.add("hidden"); $("pat").classList.add("hidden"); },
+  closePanels: function () { $("playcall").classList.add("hidden"); $("pat").classList.add("hidden"); UI.closeMenu(); },
+  closeMenu: function () { var m = $("menu"); if (m) { m.classList.add("hidden"); m.innerHTML = ""; } UI.menuOpen = false; },
+  openMenu: function (title, build) { var m = $("menu"); m.innerHTML = ""; m.classList.remove("hidden"); UI.menuOpen = true;
+    var hd = el("div", "mtop"); hd.appendChild(el("span", "mtt", esc(title))); var x = el("button", "btn xs2 sec", esc(T("pc.close"))); onTap(x, function () { UI.closeMenu(); }); hd.appendChild(x); m.appendChild(hd);
+    var body = el("div", "mbody"); m.appendChild(body); build(body); },
+  hotMenu: function () {
+    UI.openMenu(T("pc.hotPick"), function (body) {
+      RECV_KEYS.forEach(function (k) { var r = byRole("H", k.role); if (!r) return;
+        var b = el("button", "btn mk", '<b class="rnum">' + k.key + '</b> ' + esc(roleLabel(k.role)) + " · " + esc((routeName(k.role) || "block").toUpperCase()));
+        onTap(b, function () { UI.openMenu(T("pc.hotRoute") + " " + k.key, function (b2) {
+          HOT_ROUTES.forEach(function (rt) { var x = el("button", "btn mk" + (routeName(k.role) === rt ? " on" : ""), esc(rt.toUpperCase())); onTap(x, function () { setHot(k.role, rt); UI.closeMenu(); }); b2.appendChild(x); }); }); });
+        body.appendChild(b); });
+    });
+  },
+  audMenu: function () {
+    if (G.poss === "H") {
+      var cur = G.play && G.play.off; if (!cur) return;
+      UI.openMenu(T("btn.aud") + " · " + FORM_NAMES[cur.form], function (body) {
+        PLAYS.forEach(function (p) { if (p.form !== cur.form || p.id === cur.id) return;
+          var b = el("button", "pcard sm"); var cv = makeCanvas(48, 30); cv.className = "pcv"; UI.drawPlayDiagram(cv, p, !!G.call.flip); b.appendChild(cv); b.appendChild(el("span", "pn", esc(p.name)));
+          onTap(b, function () { UI.closeMenu(); userAudible(p.id); }); body.appendChild(b); });
+        var f = el("button", "btn mk", "⇄ " + esc(T("pc.flip"))); onTap(f, function () { G.call.flip = !G.call.flip; UI.closeMenu(); userAudible(cur.id); }); body.appendChild(f);
+      });
+    } else {
+      UI.openMenu(T("btn.aud"), function (body) {
+        DEF_AUDIBLES.forEach(function (id) { var d = defById(id); var b = el("button", "btn mk" + (G.call.def === id ? " on" : ""), esc(d.name)); onTap(b, function () { UI.closeMenu(); userDefAudible(id); }); body.appendChild(b); });
+      });
+    }
+  },
   drawPlayDiagram: function (cv, p, flip) {
-    var c = cv.getContext("2d"); c.fillStyle = "#1d5c26"; c.fillRect(0, 0, 40, 26); c.fillStyle = "#3a8a44"; c.fillRect(0, 16, 40, 1);
-    var f = FORMS[p.form], sx = function (x) { return Math.round(20 + x * (flip ? -1 : 1) * 1.1); }, sy = function (d) { return Math.round(16 + d * 1.4); };
-    var pos = {}; ROLE_O.forEach(function (r) { var x = f[r][0]; if (r === "WR1") x = -15; if (r === "WR2") x = 14; if (r === "WR3" && p.form === "gun") x = -8; pos[r] = [x, f[r][1]]; });
-    c.fillStyle = "#ffd23f";
-    Object.keys(p.routes).forEach(function (r) { var rt = ROUTES[p.routes[r]]; if (!rt) return; var x0 = pos[r][0], y0 = pos[r][1];
+    var W = cv.width, H = cv.height, c = cv.getContext("2d"); c.fillStyle = "#1d5c26"; c.fillRect(0, 0, W, H); c.fillStyle = "#3a8a44"; c.fillRect(0, H - 11, W, 1);
+    var f = FORMS[p.form], fl = flip ? -1 : 1, sx = function (x) { return Math.round(W / 2 + x * fl * 1.25); }, sy = function (d) { return Math.round(H - 11 + d * 1.3); };
+    var pos = {}; ROLE_O.forEach(function (r) { var q = f[r] || OL_X[r]; pos[r] = [q[0], q[1]]; });
+    var carrier = p.run ? (p.run.carrier === "QB" ? "QB" : "RB") : null;
+    Object.keys(p.routes).forEach(function (r) { var rt = ROUTES[p.routes[r]]; if (!rt || !pos[r]) return; var x0 = pos[r][0], y0 = pos[r][1];
+      if (p.type === "run" && !p.pa && r === carrier) return;
+      c.fillStyle = p.type === "run" ? "#c9b45a" : "#ffd23f";
       var inw = x0 < 0 ? 1 : -1; if (Math.abs(x0) < 0.5) inw = -1; var px = sx(x0), py = sy(y0);
-      rt.forEach(function (w) { var nx = sx(x0 + inw * w[0] * 0.6), ny = sy(y0 - w[1] * 0.45); UI.line(c, px, py, nx, ny); px = nx; py = ny; }); });
-    if (p.type === "run") { c.fillStyle = "#ff8a3a"; UI.line(c, sx(0), sy(pos.RB[1]), sx(p.aim), sy(-2)); UI.line(c, sx(p.aim), sy(-2), sx(p.aim), sy(-7)); }
-    ROLE_O.forEach(function (r) { c.fillStyle = r === "QB" ? "#fff" : r === "RB" ? "#ff8a3a" : "#e8e8e8"; c.fillRect(sx(pos[r][0]) - 1, sy(pos[r][1]) - 1, 2, 2); });
+      rt.forEach(function (w) { var nx = sx(x0 + inw * w[0] * 0.7), ny = Math.max(1, sy(y0 - w[1] * 0.5)); UI.line(c, px, py, nx, ny); px = nx; py = ny; }); });
+    if (p.run && !p.pa) { c.fillStyle = "#ff8a3a"; var cx0 = pos[carrier][0], cy0 = pos[carrier][1], ax = p.run.aim;
+      if (p.run.counter) { UI.line(c, sx(cx0), sy(cy0), sx(-ax * 0.6), sy(cy0 - 0.5)); cx0 = -ax * 0.6; cy0 -= 0.5; }
+      UI.line(c, sx(cx0), sy(cy0), sx(ax), sy(-1)); UI.line(c, sx(ax), sy(-1), sx(ax + (ax > 6 ? 2 : 0)), sy(-8)); }
+    if (p.pa) { c.fillStyle = "#ff8a3a"; c.fillRect(sx(p.run.aim * 0.4), sy(2.4), 2, 1); }
+    ROLE_O.forEach(function (r) { c.fillStyle = r === "QB" ? "#fff" : r === carrier ? "#ff8a3a" : /^(LT|LG|C|RG|RT)$/.test(r) ? "#9aa4c8" : "#e8e8e8"; c.fillRect(sx(pos[r][0]) - 1, sy(pos[r][1]) - 1, 2, 2); });
   },
   drawDefDiagram: function (cv, d) {
-    var c = cv.getContext("2d"); c.fillStyle = "#1d5c26"; c.fillRect(0, 0, 40, 26); c.fillStyle = "#3a8a44"; c.fillRect(0, 20, 40, 1);
-    var pos = { DE1: [-5, 1], DT1: [-1.5, 1], DT2: [1.5, 1], DE2: [5, 1], LB1: [-6, 5], LB2: [0, 5], LB3: [6, 5], CB1: [-15, 6], CB2: [14, 6], FS: [-6, 12], SS: [6, 11] };
-    var sx = function (x) { return Math.round(20 + x * 1.1); }, sy = function (y) { return Math.round(20 - y * 1.4); };
+    var W = cv.width, H = cv.height, c = cv.getContext("2d"); c.fillStyle = "#1d5c26"; c.fillRect(0, 0, W, H); c.fillStyle = "#3a8a44"; c.fillRect(0, H - 6, W, 1);
+    var pos = { DE1: [-5, 1], DT1: [-1.5, 1], DT2: [1.5, 1], DE2: [5, 1], LB1: [-6, 5], LB2: [0, 5], LB3: [6, 5], CB1: [-15, 6], CB2: [15, 6], FS: [-6, 12], SS: [6, 11] };
+    if (d.box) { pos.LB1[1] = 3; pos.LB3[1] = 3; pos.SS = [3, 4.5]; pos.FS = [-3, 7]; } if (d.press) { pos.CB1[1] = 2; pos.CB2[1] = 2; }
+    var sx = function (x) { return Math.round(W / 2 + x * 1.35); }, sy = function (y) { return Math.round(H - 6 - y * 1.55); };
     Object.keys(d.a).forEach(function (r) { var a = d.a[r], p0 = pos[r];
-      if (a === "rush") { c.fillStyle = "#ff4a3a"; UI.line(c, sx(p0[0]), sy(p0[1]), sx(p0[0] * 0.3), sy(-3)); }
-      else if (a.indexOf("zone:") === 0) { var z = ZONES[a.slice(5)]; c.fillStyle = "rgba(90,170,255,0.8)"; c.fillRect(sx(z[0]) - 2, sy(z[1] * 0.7) - 1, 5, 3); c.fillStyle = "#8ac8ff"; UI.line(c, sx(p0[0]), sy(p0[1]), sx(z[0]), sy(z[1] * 0.7)); }
+      if (a === "rush") { c.fillStyle = "#ff4a3a"; UI.line(c, sx(p0[0]), sy(p0[1]), sx(p0[0] * 0.3), Math.min(H - 1, sy(-3))); }
+      else if (a.indexOf("zone:") === 0) { var z = ZONES[a.slice(5)]; var zy = Math.max(2, sy(z[1] * 0.62)); c.fillStyle = /deep|d3/.test(a) ? "rgba(90,140,255,0.85)" : "rgba(255,220,90,0.8)"; c.fillRect(sx(z[0]) - 2, zy - 1, 5, 3); c.fillStyle = "#8ac8ff"; UI.line(c, sx(p0[0]), sy(p0[1]), sx(z[0]), zy); }
       else if (a.indexOf("man:") === 0) { c.fillStyle = "#c58aff"; c.fillRect(sx(p0[0]) - 1, sy(p0[1]) + 2, 3, 1); }
       else if (a === "read") { c.fillStyle = "#ffd23f"; UI.line(c, sx(p0[0]), sy(p0[1]), sx(p0[0]), sy(1.5)); } });
     Object.keys(pos).forEach(function (r) { c.fillStyle = "#e8e8e8"; c.fillRect(sx(pos[r][0]) - 1, sy(pos[r][1]) - 1, 2, 2); });
@@ -311,19 +378,36 @@ var UI = {
   },
   dock: function () {
     var L = $("dockL"), Rr = $("dockR"); if (!G || G.attract) return;
-    var key = G.phase + "|" + G.poss + "|" + (G.play ? (G.play.thrown ? 1 : 0) + (G.play.carrier ? 1 : 0) + (G.play.crossed ? 1 : 0) + (G.play.carrier && G.play.carrier.tm) : "");
-    if (UI.dockKey === key) return; UI.dockKey = key; L.innerHTML = ""; Rr.innerHTML = "";
-    if (G.phase !== "live" || G.bot) return;
+    var key = (G.phase === "lineup" ? "presnap" : G.phase) + "|" + G.poss + "|" + (G.tos ? G.tos.H : 0) + "|" + (G.play ? (G.play.thrown ? 1 : 0) + (G.play.carrier ? 1 : 0) + (G.play.crossed ? 1 : 0) + (G.play.carrier && G.play.carrier.tm) + (G.play.off && G.play.off.type) : "");
+    if (UI.dockKey === key) return; UI.dockKey = key; L.innerHTML = ""; Rr.innerHTML = ""; App.inp.sprintHeld = false;
+    if (G.bot) return;
+    var rb = function (cls, txt, fn, parent) { var b = el("button", "rb " + cls, txt); onTap(b, fn); (parent || Rr).appendChild(b); return b; };
+    var sprint = function (parent) { var b = el("button", "rb blue", esc(T("btn.sprint")));
+      var on = function (e) { e.preventDefault(); e.stopPropagation(); App.inp.sprintHeld = true; b.classList.add("down"); }, off = function () { App.inp.sprintHeld = false; b.classList.remove("down"); };
+      b.addEventListener("pointerdown", on); b.addEventListener("pointerup", off); b.addEventListener("pointercancel", off); b.addEventListener("pointerleave", off); (parent || Rr).appendChild(b); };
+    var toBtn = function () { var b = rb("yel sm", esc(T("btn.to")) + "<small>" + ((G.tos && G.tos.H) || 0) + "</small>", function () { callTimeout("H"); UI.dockKey = ""; }); if (!G.tos || G.tos.H <= 0) b.disabled = true; };
+    if ((G.phase === "presnap" || G.phase === "lineup") && G.play) {
+      if (G.poss === "H") {
+        var col = el("div", "rcol"); Rr.appendChild(col);
+        toBtn(); rb("red sm", esc(T("btn.aud")), function () { UI.audMenu(); }); rb("blue sm", esc(T("btn.hot")), function () { UI.hotMenu(); });
+        rb("green big", esc(T("btn.snap")), function () { UI.closeMenu(); requestSnap(); });
+      } else {
+        toBtn(); rb("red sm", esc(T("btn.aud")), function () { UI.audMenu(); }); rb("gray", esc(T("btn.switch")), function () { cycleDefender(); });
+      }
+      return;
+    }
+    if (G.phase !== "live") return;
     var pl = G.play;
     var userHasBall = pl.carrier && pl.carrier.tm === "H";
     if (G.poss === "H" && pl.off.type === "pass" && !pl.thrown && !pl.crossed && !pl.possChanged) {
+      var grid = el("div", "rgrid"); Rr.appendChild(grid);
       RECV_KEYS.forEach(function (k) { var r = byRole("H", k.role); if (!r || r.assign !== "route") return;
-        var b = el("button", "btn rk", k.key); b.id = "rk" + k.key; onTap(b, function () { App.inp.throwTo = k.role; }); L.appendChild(b); });
+        var b = el("button", "rb rk", k.key); b.id = "rk" + k.key; onTap(b, function () { App.inp.throwTo = k.role; }); grid.appendChild(b); });
+      sprint(L);
     } else if (userHasBall) {
-      var j = el("button", "btn act", esc(T("btn.juke"))); onTap(j, function () { App.inp.juke = true; }); Rr.appendChild(j);
+      sprint(L); rb("red", esc(T("btn.juke")), function () { App.inp.juke = true; });
     } else if ((pl.carrier && pl.carrier.tm === "A") || (G.poss === "A" && !pl.possChanged)) {
-      var s = el("button", "btn act sec", esc(T("btn.switch"))); onTap(s, function () { App.inp.sw = true; }); L.appendChild(s);
-      var d = el("button", "btn act", esc(T("btn.dive"))); onTap(d, function () { App.inp.dive = true; }); Rr.appendChild(d);
+      sprint(L); rb("gray", esc(T("btn.switch")), function () { App.inp.sw = true; }); rb("red", esc(T("btn.dive")), function () { App.inp.dive = true; });
     }
   },
   tick: function (dt) {
@@ -331,7 +415,7 @@ var UI = {
     UI.hud(); UI.dock();
     if (G.phase === "live" && G.poss === "H" && G.play && !G.play.thrown) {
       RECV_KEYS.forEach(function (k) { var b = $("rk" + k.key); if (!b) return; var r = byRole("H", k.role); var o = openness(r, "A");
-        b.className = "btn rk " + (o > 2.6 ? "open" : o > 1.4 ? "mid" : "cov"); });
+        b.className = "rb rk " + (o > 2.6 ? "open" : o > 1.4 ? "mid" : "cov"); });
     }
     if (G.phase === "kick" && G.kick && !G.kick.flying && G.kick.team === "H") {
       var k = G.kick; $("mwin").style.left = (50 - k.win * 100) + "%"; $("mwin").style.width = (k.win * 200) + "%";
@@ -378,6 +462,9 @@ var UI = {
     if (!refresh) { e.classList.remove("in"); void e.offsetWidth; e.classList.add("in"); UI.endLock = performance.now() + 900; }
   }
 };
+function roleLabel(role) { if (/^(LT|LG|C|RG|RT)$/.test(role)) return role; return role.replace(/[0-9]/g, ""); }
+function cycleDefender() { var order = ["LB2", "LB1", "LB3", "SS", "FS", "CB1", "CB2", "DE1", "DT1", "DT2", "DE2"], i = G.ctl ? order.indexOf(G.ctl.role) : -1;
+  selectDefender(byRole("H", order[(i + 1) % order.length])); }
 function spotText() {
   var yd = Math.round(ydFromOwn(G.poss, G.los));
   if (yd === 50) return T("hud.mid"); return yd < 50 ? T("hud.own", { n: yd }) : T("hud.opp", { n: 100 - yd });

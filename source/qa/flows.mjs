@@ -16,7 +16,7 @@ out.st1 = await p.evaluate(() => { const G = window.__game._g(); return { st: wi
 // mouse-drag joystick during a live play
 await p.evaluate(() => window.__game.step(150));
 await p.evaluate(() => { const g = window.__game, G = g._g(); if (G.phase === "playcall" && G.poss === "H") g._sim.userCall("off", "dive"); else if (G.phase === "playcall") g._sim.userCall("def", "cover2"); });
-let ph = ""; for (let i = 0; i < 80 && ph !== "live"; i++) ph = (await p.evaluate(() => window.__game.step(1))).phase;
+let ph = ""; for (let i = 0; i < 80 && ph !== "live"; i++) ph = (await p.evaluate(() => { const g = window.__game, G = g._g(); if ((G.phase === "presnap" || G.phase === "lineup") && G.poss === "H") g._sim.requestSnap(); return g.step(1); })).phase;
 const before = await p.evaluate(() => { const c = window.__game._g().ctl; return c && { x: c.x, y: c.y }; });
 await p.mouse.move(195, 600); await p.mouse.down(); await p.mouse.move(260, 600, { steps: 4 });
 await p.evaluate(() => window.__game.step(20));
@@ -28,7 +28,7 @@ out.joyMovedX = before && after ? +(after.x - before.x).toFixed(2) : null;
 await p.click("#bPause"); out.pauseShown = await p.isVisible("#pause"); await p.click("#pRes"); out.pauseHidden = !(await p.isVisible("#pause"));
 // force an end and test buttons
 await p.evaluate(() => { const G = window.__game._g(); G.score.H = 21; G.score.A = 3; G.quarter = 4; G.clock = 0.5; });
-for (let i = 0; i < 400; i++) { const inf = await p.evaluate(() => { const g = window.__game, G = g._g(); if (G.phase === "playcall") { if (G.poss === "H") g._sim.userCall("off", "dive"); else g._sim.userCall("def", "run"); } if (G.phase === "pat") g._sim.userPAT("kick"); if (G.phase === "kick") g._sim.kickTap(); return g.step(10); }); if (inf.st === "end") { out.end = inf.outcome; break; } }
+for (let i = 0; i < 400; i++) { const inf = await p.evaluate(() => { const g = window.__game, G = g._g(); if (G.phase === "playcall") { if (G.poss === "H") g._sim.userCall("off", "dive"); else g._sim.userCall("def", "run"); } if (G.phase === "pat") g._sim.userPAT("kick"); if ((G.phase === "presnap" || G.phase === "lineup") && G.poss === "H") g._sim.requestSnap(); if (G.phase === "kick") g._sim.kickTap(); return g.step(10); }); if (inf.st === "end") { out.end = inf.outcome; break; } }
 await p.waitForTimeout(1200);
 out.endVisible = await p.isVisible("#end"); out.nextLabel = await p.textContent("#eNext");
 const oppBefore = await p.evaluate(() => window.__game._g().away.name);
