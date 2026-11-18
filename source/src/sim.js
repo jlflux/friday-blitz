@@ -58,7 +58,7 @@ function P(id) { return PARAMS[id]; }
 function newGame(home, away, opts) {
   opts = opts || {};
   var seed = opts.seed >>> 0;
-  G = { attract: !!opts.attract,
+  G = { attract: !!opts.attract, franchise: !!opts.franchise, userAway: !!opts.userAway, mods: opts.mods || { off: 0, def: 0 }, homeAdv: opts.homeAdv || 0,
     home: home, away: away, rng: mulberry32(seed), seed: seed, t: 0, bot: !!opts.bot,
     score: { H: 0, A: 0 }, quarter: 1, qlen: P("quarterMinutes") * 60, clock: P("quarterMinutes") * 60, half: 1,
     ot: 0, otLeft: 0, poss: "H", los: 35, ballX: FW / 2, down: 1, toGo: 10, phase: "kickoff", phaseT: 0,
@@ -73,17 +73,18 @@ function newGame(home, away, opts) {
   return G;
 }
 
+function isAwayTm(tm) { return G && G.userAway ? tm === "H" : tm === "A"; }
 function teamOf(tm) { return tm === "H" ? G.home : G.away; }
 function rosterUnit(team, unit) { return team.roster.filter(function (p) { return p.unit === unit; }); }
 
 function buildFieldPlayers() {
   G.players = [];
   ["H", "A"].forEach(function (tm) {
-    var team = teamOf(tm), pal = teamColors(team, tm === "A");
+    var team = teamOf(tm), pal = teamColors(team, isAwayTm(tm));
     team.roster.forEach(function (r, i) {
       if (r.unit === "K") return;
       var fp = { tm: tm, r: r, ridx: i, unit: r.unit, role: r.unit === "O" ? ROLE_O[i] : ROLE_D[i - 11], x: FW / 2, y: 60, vx: 0, vy: 0,
-        face: "down", anim: 0, state: "stand", stun: 0, eng: null, engT: 0, shedCd: 0, tackleCd: 0, assign: null, route: null, ri: 0,
+        face: "down", hx: 0, hy: 1, anim: 0, state: "stand", stun: 0, eng: null, engT: 0, shedCd: 0, tackleCd: 0, assign: null, route: null, ri: 0,
         diveT: 0, downT: 0, jukeT: 0, jukeCd: 0, slowT: 0, target: null, onField: false, react: 0, gx: 0, gy: 0, cheer: 0 };
       fp.spr = buildPlayerSprites(pal, SKINS[r.skin || 0], r.num);
       G.players.push(fp);
@@ -92,7 +93,7 @@ function buildFieldPlayers() {
 }
 function rebuildSprites() {
   if (!G) return;
-  G.players.forEach(function (fp) { var team = teamOf(fp.tm); fp.spr = buildPlayerSprites(teamColors(team, fp.tm === "A"), SKINS[fp.r.skin || 0], fp.r.num); });
+  G.players.forEach(function (fp) { var team = teamOf(fp.tm); fp.spr = buildPlayerSprites(teamColors(team, isAwayTm(fp.tm)), SKINS[fp.r.skin || 0], fp.r.num); });
 }
 function kicker(tm) { var k = teamOf(tm).roster.filter(function (p) { return p.unit === "K"; })[0]; return k || { pwr: 6, hnd: 6, num: 3, name: "Kicker" }; }
 
@@ -105,6 +106,7 @@ function speedOf(fp) {
   s *= (fp.tm === "H" ? P("playerSpeed") : P("cpuSpeed"));
   if (G.play && G.play.carrier === fp) s *= 0.93;
   if (fp.slowT > 0) s *= 0.55;
+  if (G.ctl === fp && !G.bot && fp.tm !== (G.play && G.play.carrier ? G.play.carrier.tm : G.poss)) s *= 1.05;
   return s;
 }
 
@@ -118,8 +120,8 @@ function startKickoff(kickTeam) {
   var ks = G.players.filter(function (p) { return p.tm === kickTeam && p.unit === "D"; });
   var rs = G.players.filter(function (p) { return p.tm === recv && p.unit === "O"; });
   G.players.forEach(function (p) { p.onField = false; p.state = "stand"; p.stun = 0; p.eng = null; p.downT = 0; p.diveT = 0; p.cheer = 0; });
-  ks.forEach(function (p, i) { p.onField = true; p.x = 3 + i * (FW - 6) / 10; p.y = ky - rd * 1; p.face = rd > 0 ? "up" : "down"; });
-  rs.forEach(function (p, i) { p.onField = true; p.x = 4 + i * (FW - 8) / 10; p.y = yFromOwn(recv, i === 1 ? 2 : 40 - (i % 3) * 8); p.face = rd > 0 ? "down" : "up"; });
+  ks.forEach(function (p, i) { p.onField = true; p.x = 3 + i * (FW - 6) / 10; p.y = ky - rd * 1; p.hx = 0; p.hy = rd; });
+  rs.forEach(function (p, i) { p.onField = true; p.x = 4 + i * (FW - 8) / 10; p.y = yFromOwn(recv, i === 1 ? 2 : 40 - (i % 3) * 8); p.hx = 0; p.hy = -rd; });
   G.ball = { x: FW / 2, y: ky, z: 0, state: "kick", x0: FW / 2, y0: ky, x1: FW / 2 + (G.rng() - 0.5) * 10, y1: yFromOwn(recv, -6), t: 0, dur: 2.3, h: 22 };
   G.play = null; G.ctl = null;
   setPhase("kickoff"); banner("b.kickoff"); ev("kickoff", { team: kickTeam }); sfx("kick");
@@ -210,7 +212,7 @@ function layoutFormation(playDef, defDef, snapTo) {
   var dp = { DE1: [bx - 5 * flip, 1.2], DT1: [bx - 1.6 * flip, 1.2], DT2: [bx + 1.6 * flip, 1.2], DE2: [bx + 5 * flip, 1.2],
     LB1: [(bx - 5.5 * flip) * 0.5 + wr3 * 0.5, 5], LB2: [bx, 5.2], LB3: [bx + 6 * flip, 5], CB1: [wr1, 6.5], CB2: [wr2, 6.5], FS: [bx - 6, 13], SS: [bx + 6, 11] };
   ROLE_D.forEach(function (role) { var p = byRole(def, role); p.gx = clamp(dp[role][0], 1.5, FW - 1.5); p.gy = G.los + d * dp[role][1]; });
-  G.players.forEach(function (p) { if (!p.onField) return; p.face = p.tm === off ? (d > 0 ? "up" : "down") : (d > 0 ? "down" : "up");
+  G.players.forEach(function (p) { if (!p.onField) return; p.hx = 0; p.hy = p.tm === off ? d : -d;
     if (snapTo) { p.x = p.gx; p.y = p.gy; } });
   if (!snapTo) {
     // first time (or after kickoff): place immediately if far away
@@ -224,10 +226,11 @@ function startPresnap() {
   layoutFormation(pd, dd, false);
   G.play = { off: pd, def: dd, t: 0, carrier: null, qb: byRole(G.poss, "QB"), thrown: false, handed: false, result: null,
     startLos: G.los, startPoss: G.poss, possChanged: false, sackable: pd.type === "pass", scramble: false, crossed: false, intended: null, deadT: 0 };
+  G.picked = false;
   // user defender default
   if (G.poss === "A") {
     var role = dd.id === "prevent" ? "FS" : "LB2";
-    G.userDef = byRole("H", role);
+    G.userDef = byRole("H", role); G.ctl = G.userDef;
   }
   setPhase("presnap");
 }
@@ -254,7 +257,7 @@ function snap() {
     var p = byRole(def, role), a = pl.def.a[role];
     if (def === "A" && G.half === 2 && a.indexOf("zone:hook") === 0 && G.rng() < (P("stageScale") - 1) * 1.3) a = "rush";
     if (def === "A" && G.half === 2 && G.lastCatchRole && role === "FS" && pl.def.id !== "blitz") { a = "man:" + G.lastCatchRole; if (!G.doubleShown) { G.doubleShown = true; G.doubleRole = G.lastCatchRole; if (typeof UI !== "undefined" && !G.attract) UI.hint(T("hint.double", { n: byRole("H", G.lastCatchRole).r.num })); } }
-    p.assign = a; p.react = 0.12 + G.rng() * 0.25 / (def === "A" ? P("coverage") : 1);
+    p.assign = a; p.react = 0.08 + G.rng() * 0.2 / (def === "A" ? P("coverage") : 1);
   });
   // blocking pairs
   var rushers = G.players.filter(function (p) { return p.tm === def && p.onField && p.assign === "rush"; });
@@ -274,7 +277,7 @@ function snap() {
   G.ball = { x: G.ballX, y: G.los, z: 0, state: "held", holder: pl.qb };
   pl.carrier = null; pl.holder = pl.qb;
   if (G.poss === "H") G.ctl = pl.qb;
-  else G.ctl = G.userDef;
+  else G.ctl = G.userDef || byRole("H", "LB2");
   setPhase("live"); sfx("snap"); ev("snap", { play: pl.off.id, def: pl.def.id, poss: G.poss });
 }
 
@@ -325,7 +328,7 @@ function updateLive(dt, inp) {
 
 function handoff(rb) {
   var pl = G.play; pl.handed = true; pl.carrier = rb; G.ball.holder = rb; G.ball.state = "held";
-  if (G.poss === "H") G.ctl = rb; ev("handoff"); sfx("tap");
+  if (G.poss === "H") G.ctl = rb; else autoSwitch(rb); ev("handoff"); sfx("tap");
 }
 
 function cpuQBThink(dt) {
@@ -369,7 +372,7 @@ function throwTo(r) {
     tx = r.x + vx * T; ty = r.y + vy * T; }
   var range = 32 + qb.r.pwr * 2.2; var dd = len(tx - qb.x, ty - qb.y);
   var opp = other(qb.tm), press = nearestOpp(qb, opp), pressD = press ? dist(press, qb) : 99;
-  var err = (0.5 + (10 - qb.r.hnd) * 0.1) * (dd / 18) * (pressD < 2 ? 1.7 : 1) * (dd > range ? 2.2 : 1);
+  var err = (0.55 + (10 - qb.r.hnd) * 0.1) * (dd / 17) * (pressD < 2.2 ? 1.9 : 1) * (dd > range ? 2.2 : 1) * (qb.tm === "H" ? 1 - G.mods.off * 0.05 : 1);
   var g1 = (G.rng() + G.rng() + G.rng() - 1.5), g2 = (G.rng() + G.rng() + G.rng() - 1.5);
   tx += g1 * err; ty += g2 * err * 0.8;
   tx = clamp(tx, -2, FW + 2);
@@ -385,7 +388,7 @@ function throwTo(r) {
 
 function updateBall(dt) {
   var b = G.ball, pl = G.play;
-  if (b.state === "held" && b.holder) { var h = b.holder; b.x = h.x + (h.face === "side" ? (h.flipX ? -0.4 : 0.4) : 0.35); b.y = h.y; b.z = 1.2; return; }
+  if (b.state === "held" && b.holder) { var h = b.holder; b.x = h.x + (h.hx || 0) * 0.35 + 0.15; b.y = h.y; b.z = 1.2; return; }
   if (b.state === "air") {
     b.t += dt; var u = Math.min(1, b.t / b.dur);
     b.x = b.x0 + (b.x1 - b.x0) * u; b.y = b.y0 + (b.y1 - b.y0) * u; b.z = 1.5 * (1 - u) + 4 * b.h * u * (1 - u) + 0.6 * u;
@@ -403,14 +406,14 @@ function resolveCatch() {
   G.players.forEach(function (p) { if (!p.onField || p.tm !== opp || p.downT > 0 || p.eng) return; var q = dist(p, spot); if (q < dd) { dd = q; dfn = p; } });
   var rnd = G.rng();
   if (spot.x < 0 || spot.x > FW || (spot.y - goalY(r.tm)) * dirOf(r.tm) > 10) { return incomplete(); }
-  if (dfn && dd < 1.05 && dd < dr - 0.15) {
-    var pInt = 0.2 + 0.045 * (dfn.r.hnd - 5) + (isUserCtl(dfn) ? 0.12 : 0);
+  if (dfn && dd < 1.25 && dd < dr + 0.1) {
+    var pInt = 0.17 + 0.04 * (dfn.r.hnd - 5) + (isUserCtl(dfn) ? 0.15 : 0); if (dd > dr) pInt *= 0.5;
     if (rnd < pInt) return intercept(dfn);
     ev("breakup"); return incomplete();
   }
   if (dr < 1.55) {
     var cs = r.tm === "H" ? P("catchSkill") : 1;
-    var pc = (0.84 + 0.035 * (r.r.hnd - 5)) * (0.8 + 0.2 * cs) + (cs - 1) * 0.12 - (dd < 1.2 ? 0.17 : dd < 1.8 ? 0.07 : 0) - Math.max(0, dr - 0.9) * 0.2;
+    var pc = (0.84 + 0.035 * (r.r.hnd - 5)) * (0.8 + 0.2 * cs) + (cs - 1) * 0.12 - (dd < 1.2 ? 0.22 : dd < 1.9 ? 0.1 : 0) - Math.max(0, dr - 0.9) * 0.2;
     pc = clamp(pc, 0.08, 0.97);
     if (rnd < pc) return complete(r);
     ev("drop"); return incomplete();
@@ -422,7 +425,7 @@ function complete(r) {
   var pl = G.play; pl.carrier = r; G.ball = { state: "held", holder: r, x: r.x, y: r.y, z: 1 };
   r.assign = "carry"; pl.catchY = r.y; pl.completion = true;
   if (r.tm === "H" && !G.bot) G.ctl = r;
-  if (r.tm === "A" && !G.bot) { var near = nearestOpp(r, "H"); if (G.userDef && dist(G.userDef, r) > 12 && near) G.userDef = near; G.ctl = G.userDef; }
+  if (r.tm === "A" && !G.bot) { G.ctl = G.userDef; autoSwitch(r); }
   if (r.tm === "H") G.lastCatchRole = r.role;
   ev("pass_complete", { to: r.role }); sfx("catch");
 }
@@ -440,6 +443,15 @@ function intercept(dfn) {
   G.players.forEach(function (p) { if (!p.onField) return; p.eng = null; p.target = null; if (p !== dfn) p.assign = p.tm === dfn.tm ? "escort" : "pursue"; });
 }
 
+function bestDefender(c) {
+  var best = null, bt = 1e9;
+  G.players.forEach(function (p) { if (!p.onField || p.tm !== "H" || p.downT > 0 || p.diveT > 0) return;
+    var t = dist(p, c) / speedOf(p) + (p.eng ? 0.8 : 0) - ((p.y - c.y) * dirOf(c.tm) > 0 ? 0.25 : 0); if (t < bt) { bt = t; best = p; } });
+  return best;
+}
+function autoSwitch(c) { if (G.bot || c.tm !== "A" || !P("autoSwitch")) return; var b = bestDefender(c); if (b && b !== G.ctl) { G.ctl = b; G.userDef = b; } }
+function selectDefender(p) { if (!p || p.tm !== "H" || !p.onField || G.bot) return; if (!(G.phase === "presnap" || G.phase === "live" || G.phase === "playcall")) return;
+  if (G.poss !== "A" && !(G.play && G.play.carrier && G.play.carrier.tm === "A")) return; G.ctl = p; G.userDef = p; G.picked = true; sfx("tap"); ev("select_defender"); }
 function switchDefender() {
   var b = G.play && G.play.carrier ? G.play.carrier : G.ball;
   var best = null, bd = 1e9;
@@ -483,9 +495,9 @@ function movePlayer(p, dt, inp) {
   if (carrier === p) { aiRunner(p, dt, s); integ(p, dt); return; }
   if (carrier) {
     if (p.tm !== carrier.tm) { // pursue
-      var lead = Math.min(1.2, dist(p, carrier) / s) * 0.8;
+      var lead = Math.min(1.4, dist(p, carrier) / s) * 0.95;
       var tx = carrier.x + carrier.vx * lead, ty = carrier.y + carrier.vy * lead;
-      steerTo(p, tx, ty, s * (p.tm === "A" ? 1 : 0.95), dt, 9);
+      steerTo(p, clamp(tx, -1, FW + 1), ty, s, dt, 10);
       if (!isUserCtl(p) && dist(p, carrier) < 2.3 && dist(p, carrier) > 1.0 && p.tackleCd <= 0 && G.rng() < dt * 1.6) { dive(p, null, carrier); return; }
       integ(p, dt); return;
     }
@@ -506,7 +518,7 @@ function movePlayer(p, dt, inp) {
 function integ(p, dt) {
   p.x += p.vx * dt; p.y += p.vy * dt;
   var sp = len(p.vx, p.vy);
-  if (sp > 0.6) { p.anim += dt * sp * 1.3; if (Math.abs(p.vy) > Math.abs(p.vx) * 0.9) { p.face = p.vy > 0 ? "up" : "down"; } else { p.face = "side"; p.flipX = p.vx < 0; } }
+  if (sp > 0.6) { p.anim += dt * sp * 1.3; p.hx = p.vx / sp; p.hy = p.vy / sp; }
   else p.anim = 0;
 }
 
@@ -515,10 +527,12 @@ function juke(p, mx) {
   p.vx += side * 6.5; p.jukeT = 0.32; p.jukeCd = 1.1; ev("juke"); sfx("juke");
 }
 function dive(p, inp, target) {
-  var dx, dy;
+  var dx, dy, c = target || (G.play && G.play.carrier) || G.ball;
   if (inp && (Math.abs(inp.mx) + Math.abs(inp.my) > 0.05)) { dx = inp.mx; dy = inp.my; }
-  else { var c = target || (G.play && G.play.carrier) || G.ball; dx = c.x - p.x; dy = c.y - p.y; }
-  var l = len(dx, dy) || 1; p.vx = dx / l * 10.5; p.vy = dy / l * 10.5; p.diveT = 0.3; p.state = "dive"; p.face = "side"; p.flipX = dx < 0;
+  else { dx = c.x - p.x; dy = c.y - p.y; }
+  if (c && dist(p, c) < 5.5) { var lt = Math.min(0.35, dist(p, c) / 10.5); var ax = c.x + (c.vx || 0) * lt - p.x, ay = c.y + (c.vy || 0) * lt - p.y, al = len(ax, ay) || 1, il = len(dx, dy) || 1;
+    dx = dx / il * 0.25 + ax / al * 0.75; dy = dy / il * 0.25 + ay / al * 0.75; }
+  var l = len(dx, dy) || 1; p.vx = dx / l * 10.5; p.vy = dy / l * 10.5; p.diveT = 0.3; p.state = "dive"; p.hx = dx / l; p.hy = dy / l;
   p.diving = true; ev("dive"); if (isUserCtl(p)) sfx("juke");
 }
 
@@ -532,7 +546,7 @@ function aiRunner(p, dt, s) {
   for (var i = 0; i < G.players.length; i++) { var q = G.players[i];
     if (!q.onField || q.tm !== opp || q.downT > 0) continue;
     var dx = p.x - q.x, dy = p.y - q.y, dd = len(dx, dy); if (dd > 7) continue;
-    var ahead = (q.y - p.y) * d > -1.5 ? 1 : 0.35; var w = (q.eng ? 0.25 : 1) * ahead / Math.max(0.6, dd * dd) * 2.0;
+    var ahead = (q.y - p.y) * d > -1.5 ? 1 : 0.35; var w = (q.eng ? 0.25 : 1) * ahead / Math.max(0.7, dd * dd) * 1.7;
     tx += dx / (dd || 1) * w; ty += dy / (dd || 1) * w * 0.55;
   }
   // sideline avoidance
@@ -629,7 +643,7 @@ function resolveBlocks(dt) {
     var nx = b.x - t.x, ny = b.y - t.y, nl = len(nx, ny) || 1;
     var wantX = t.x - dx / l * 0.85, wantY = t.y - dy / l * 0.85;
     b.vx = (wantX - b.x) * 6; b.vy = (wantY - b.y) * 6; b.x += b.vx * dt; b.y += b.vy * dt;
-    b.face = t.face === "up" ? "down" : t.face === "down" ? "up" : "side";
+    var hl = len(t.x - b.x, t.y - b.y) || 1; b.hx = (t.x - b.x) / hl; b.hy = (t.y - b.y) / hl; t.hx = -b.hx; t.hy = -b.hy;
     b.anim += dt * 3; t.anim += dt * 3;
   });
 }
@@ -656,7 +670,7 @@ function defenseAI(p, dt, s, d) {
     return;
   }
   if (a === "read") {
-    if (pl.handed || pl.qbRun || pl.scramble) { var c = pl.carrier || qb; steerTo(p, c.x + c.vx * 0.4, c.y + c.vy * 0.4, s, dt, 8); return; }
+    if (pl.handed || pl.qbRun || pl.scramble) { var c = pl.carrier || qb; steerTo(p, c.x + c.vx * 0.6, c.y + c.vy * 0.6, s, dt, 10); return; }
     if (pl.t < 0.45) { steerTo(p, p.gx + (G.ballX - p.gx) * 0.25, G.los + d * 2.6, s * 0.8, dt); return; }
     a = p.role === "SS" ? "zone:deepR" : p.role === "LB1" ? "zone:hookL" : p.role === "LB3" ? "zone:hookR" : "zone:mid";
   }
@@ -670,7 +684,7 @@ function defenseAI(p, dt, s, d) {
     var cov = p.tm === "A" ? P("coverage") : 1;
     var lead2 = 0.15 + 0.35 * clamp(cov, 0.5, 1.5);
     var cushion = 1.1 + (p.role === "FS" || p.role === "SS" ? 1 : 0);
-    steerTo(p, r.x + r.vx * lead2, r.y + r.vy * lead2 + d * cushion * 0.6, s * (0.88 + 0.12 * cov), dt, 6 + 4 * cov);
+    steerTo(p, r.x + r.vx * lead2, r.y + r.vy * lead2 + d * cushion * 0.5, s * (0.97 + 0.06 * cov), dt, 7 + 4 * cov);
     return;
   }
   if (a.indexOf("zone:") === 0) {
@@ -690,10 +704,11 @@ function tackleChecks(dt, c) {
   var opp = other(c.tm);
   for (var i = 0; i < G.players.length; i++) { var q = G.players[i];
     if (!q.onField || q.tm !== opp || q.downT > 0 || q.eng || q.tackleCd > 0 || q.stun > 0) continue;
-    var reach = 0.95 * (q.tm === "A" ? P("tackleRadius") : 1) + (q.diveT > 0 ? 0.35 : 0);
+    var reach = 1.0 * (q.tm === "A" ? P("tackleRadius") : 1) + (q.diveT > 0 ? 0.45 : 0) + (isUserCtl(q) ? 0.25 : 0);
     if (dist(q, c) > reach) continue;
-    var pT = 0.71 + 0.06 * (q.r.pwr - c.r.pwr) + (q.diveT > 0 ? 0.28 : 0) - (c.jukeT > 0 ? 0.45 : 0) + (isUserCtl(q) ? 0.08 : 0);
-    if (c.tm === "H" && !G.bot) pT -= 0.04;
+    var gang = 0; for (var g2 = 0; g2 < G.players.length; g2++) { var o2 = G.players[g2]; if (o2 !== q && o2.onField && o2.tm === opp && o2.downT <= 0 && !o2.eng && dist(o2, c) < 2.2) gang++; }
+    var pT = 0.8 + 0.05 * (q.r.pwr - c.r.pwr) + gang * 0.09 + (q.diveT > 0 ? 0.25 : 0) - (c.jukeT > 0 ? 0.38 : 0) + (isUserCtl(q) ? 0.08 : 0);
+    pT += (q.tm === "H" ? G.mods.def : G.mods.off ? 0 : 0) * 0.04 - (c.tm === "H" ? G.mods.off : 0) * 0.03;
     pT = clamp(pT, 0.12, 0.96);
     if (G.rng() < pT) { stat(q.tm, q.ridx).tkl++; G.play.tackler = q;
       var behind = (c.y - G.play.startLos) * dirOf(G.play.startPoss) < 0;
@@ -701,7 +716,7 @@ function tackleChecks(dt, c) {
       if (q.diveT > 0) { q.diveT = 0; q.downT = 0.8; }
       c.downT = 1.2; c.state = "down"; c.vx *= 0.3; c.vy *= 0.3;
       return endPlay(isSack ? "sack" : "tackle", c);
-    } else { q.stun = 0.45; q.tackleCd = 0.6; c.slowT = 0.3; if (q.diveT > 0) { q.diveT = 0; q.downT = 0.8; } ev("broken_tackle"); sfx("hit");
+    } else { q.stun = 0.4; q.tackleCd = 0.5; c.slowT = 0.3; if (q.diveT > 0) { q.diveT = 0; q.downT = 0.8; } ev("broken_tackle"); sfx("hit");
       if (c.tm === "H") popup(c.x, c.y, "b.broken"); }
   }
 }
@@ -948,7 +963,7 @@ function otPossessionOver(team) {
 function checkOTDone() {
   if (!G.ot) return false;
   if (G.otLeft <= 0) {
-    if (G.score.H !== G.score.A || G.ot >= 3) { finalWhistle(); return true; }
+    if (G.score.H !== G.score.A || (G.ot >= 3 && !G.franchise) || G.ot >= 12) { if (G.score.H === G.score.A && G.franchise) G.score[G.rng() < 0.5 ? "H" : "A"] += 3; finalWhistle(); return true; }
     G.ot++; G.otLeft = 2; G.poss = "H"; setDrive("H", 75); G.otCur = "H"; banner("b.ot", null, true, "#ffd23f"); beginPlayCall(); return true;
   }
   if (G.otPending) { var tm = G.otPending; G.otPending = null; G.poss = tm; setDrive(tm, 75); G.otCur = tm; beginPlayCall(); return true; }
@@ -974,7 +989,7 @@ function simStep(dt, inp) {
     case "kickoff": updateKickoff(dt); break;
     case "playcall": idleDrift(dt); if (G.bot && G.phaseT > 0.4 && !G.call.launched) botPlayCall();
       if (G.poss === "A" && G.call && G.call.special && !G.call.launched && G.phaseT > 1.0) { G.call.launched = true; launchCall(); } break;
-    case "presnap": presnapMove(dt); if (G.phaseT > 2.2 || (G.phaseT > 0.7 && presnapSet())) snap(); break;
+    case "presnap": presnapMove(dt); var wait = (G.poss === "A" && !G.bot && !G.attract) ? (G.picked ? 1.0 : 2.6) : 0.7; if (G.phaseT > Math.max(2.2, wait) || (G.phaseT > wait && presnapSet())) snap(); break;
     case "live": updateLive(dt, inp); break;
     case "dead": idleDead(dt); G.deadT += dt; if (G.deadT > 1.5) afterDead(); break;
     case "pat": idleDrift(dt); if (G.bot) userPAT("kick"); break;
@@ -991,11 +1006,11 @@ function simStep(dt, inp) {
 function presnapSet() { for (var i = 0; i < G.players.length; i++) { var p = G.players[i]; if (p.onField && (Math.abs(p.x - p.gx) > 0.6 || Math.abs(p.y - p.gy) > 0.6)) return false; } return true; }
 function presnapMove(dt) {
   G.players.forEach(function (p) { if (!p.onField) return; steerTo(p, p.gx, p.gy, 9, dt, 10); integ(p, dt);
-    var d = dirOf(G.poss); p.face = p.tm === G.poss ? (d > 0 ? "up" : "down") : (d > 0 ? "down" : "up"); });
+    var d = dirOf(G.poss); p.hx = 0; p.hy = p.tm === G.poss ? d : -d; });
 }
 function idleDrift(dt) {
   G.players.forEach(function (p) { if (!p.onField) return; steerTo(p, p.gx, p.gy, 5, dt, 6); integ(p, dt);
-    if (len(p.vx, p.vy) < 0.6) { var d = dirOf(G.poss); p.face = p.tm === G.poss ? (d > 0 ? "up" : "down") : (d > 0 ? "down" : "up"); } });
+    if (len(p.vx, p.vy) < 0.6) { var d = dirOf(G.poss); p.hx = 0; p.hy = p.tm === G.poss ? d : -d; } });
 }
 function idleDead(dt) {
   G.players.forEach(function (p) { if (!p.onField) return; if (p.downT > 0) p.downT = Math.max(0.05, p.downT - dt * 0.4);

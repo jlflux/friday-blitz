@@ -10,6 +10,7 @@ function coerce(id, v) {
   if (d.type === "float") { v = +v; if (isNaN(v)) v = d.def; return clamp(v, d.min, d.max); }
   if (d.type === "bool") return v === true || v === "1" || v === "true" || v === "on";
   if (d.type === "text") return String(v == null ? "" : v).slice(0, d.max || 64);
+  if (d.type === "enum") return d.options.indexOf(v) >= 0 ? v : d.def;
   return v;
 }
 function recomputeParams() {
@@ -20,7 +21,7 @@ function recomputeParams() {
 }
 function setParam(id, v) { if (!CONFIG.params[id]) return; BASE[id] = coerce(id, v); recomputeParams(); onParamChange(id); }
 function onParamChange(id) {
-  if (id === "pixelSize") App.layout();
+  if (id === "pixelSize" || id === "camera") { R.fieldKey = ""; App.layout(); if (G) camUpdate(0, true); }
   if (id === "sfxVolume" || id === "musicVolume") audioVolumes();
   if (id === "quarterMinutes" && G && !G.attract && G.quarter === 1 && G.clock === G.qlen) { G.qlen = P("quarterMinutes") * 60; G.clock = G.qlen; }
   if (UI.endShown && (id === "endTitle" || id === "endSub" || id === "ctaText")) UI.showEnd(true);
@@ -35,7 +36,7 @@ var App = {
   boot: function () {
     for (var id in CONFIG.params) BASE[id] = CONFIG.params[id].def;
     var sv = loadSave();
-    if (sv) { App.save = { w: sv.w || 0, l: sv.l || 0, t: sv.t || 0 }; if (sv.diff) App.diff = sv.diff; if (sv.qmin) BASE.quarterMinutes = coerce("quarterMinutes", sv.qmin); if (sv.lang) App.lang = sv.lang; }
+    if (sv) { App.save = { w: sv.w || 0, l: sv.l || 0, t: sv.t || 0 }; if (sv.diff) App.diff = sv.diff; if (sv.qmin) BASE.quarterMinutes = coerce("quarterMinutes", sv.qmin); if (sv.cam) BASE.camera = sv.cam === "classic" ? "classic" : "pro"; if (sv.lang) App.lang = sv.lang; }
     if (window.__DIFF) App.diff = window.__DIFF;
     if (QS.diff && CONFIG.difficulty[QS.diff]) App.diff = QS.diff;
     if (window.__PARAMS) for (var k in window.__PARAMS) if (CONFIG.params[k]) BASE[k] = coerce(k, window.__PARAMS[k]);
@@ -78,7 +79,7 @@ var App = {
   },
   setLang: function (l) { LANG = STRINGS[l] ? l : "en"; App.lang = LANG; App.persist(); UI.applyLang(); },
   layout: function () { var g = $("game"), r = g.getBoundingClientRect(); if (r.width < 2 || r.height < 2) return; renderLayout(r.width, r.height); if (G) { camUpdate(0, true); } document.documentElement.style.setProperty("--u", Math.min(r.width / 390, r.height / 640) + ""); },
-  persist: function () { writeSave({ w: App.save.w, l: App.save.l, t: App.save.t, diff: App.diff, qmin: BASE.quarterMinutes, lang: App.lang, home: App.home, away: App.away, awayIdx: App.awayIdx }); },
+  persist: function () { writeSave({ cam: BASE.camera, w: App.save.w, l: App.save.l, t: App.save.t, diff: App.diff, qmin: BASE.quarterMinutes, lang: App.lang, home: App.home, away: App.away, awayIdx: App.awayIdx }); },
   saveTeams: function () { App.persist(); },
   setDiff: function (d) { App.diff = d; recomputeParams(); App.persist(); },
   cycleTeam: function (which, dir) {
@@ -94,7 +95,7 @@ var App = {
     $("playcall").classList.add("hidden"); $("pat").classList.add("hidden"); $("meter").classList.add("hidden");
     crowdStop();
     // attract-mode demo game behind the title
-    newGame(cloneTeam(App.home), cloneTeam(App.away), { seed: (Date.now() & 0xffff), bot: true, attract: true }); R.field = null;
+    newGame(cloneTeam(App.home), cloneTeam(App.away), { seed: (Date.now() & 0xffff), bot: true, attract: true }); R.fieldKey = "";
     camUpdate(0, true);
     UI.show("title");
     if (!first) musicStart();
@@ -102,16 +103,41 @@ var App = {
   startGame: function () {
     audioInit(); musicStop(); crowdStart();
     var seed = TEST ? (CONFIG.meta.seed >>> 0) : ((QS.seed ? +QS.seed : (Date.now() ^ (Math.random() * 4294967296))) >>> 0);
-    newGame(App.home, App.away, { seed: seed, bot: "bot" in QS }); R.field = null; App.recorded = false;
+    newGame(App.home, App.away, { seed: seed, bot: "bot" in QS }); R.fieldKey = ""; App.recorded = false;
     App.st = "play"; App.playT = 0; UI.bannerQ = []; UI.bannerT = 0; UI.dockKey = ""; UI.flip = false;
     UI.startGameUI(); camUpdate(0, true); ev("begin");
   },
   next: function () {
     var n = App.peekNext(); App.seeds.away += 13; App.away = makeTeam(n.idx, App.seeds.away); App.awayIdx = n.idx; App.persist(); App.startGame();
   },
+  startFranchiseGame: function () {
+    var g = currentUserGame(); if (!g) return;
+    audioInit(); musicStop(); crowdStart();
+    var u = userEngineTeam(), oppId = g.h === FR.user ? g.a : g.h, opp = cpuEngineTeam(oppId), userHome = g.h === FR.user;
+    if (FR.phase === "playoffs" && FR.playoffs.cur === FR.playoffs.rounds.length - 1) userHome = true;
+    var mods = { off: FR.upg.staff * 0.4 + FR.upg.film * 0.2, def: FR.upg.staff * 0.4 + FR.upg.film * 0.3 };
+    App.frCtx = { g: g, ids: u.ids, userHome: g.h === FR.user };
+    var seed = ((Date.now() ^ (Math.random() * 4294967296)) >>> 0);
+    newGame(u.team, opp, { seed: seed, userAway: !userHome, mods: mods, franchise: true }); R.fieldKey = "";
+    App.st = "play"; App.playT = 0; App.recorded = false; UI.bannerQ = []; UI.bannerT = 0; UI.dockKey = ""; UI.flip = false;
+    UI.startGameUI(); camUpdate(0, true); ev("begin");
+  },
+  frFinish: function () {
+    var ctx = App.frCtx; if (!ctx || !G) return; App.frCtx = null;
+    var us = G.score.H, them = G.score.A, rows = engineStatsToRows(G.stats, ctx.ids);
+    var hs = ctx.userHome ? us : them, as = ctx.userHome ? them : us;
+    finishUserGame(ctx.g, hs, as, rows); FUI.toastResult(ctx.g);
+    App.toFranchise();
+  },
+  toFranchise: function () {
+    App.st = "intro"; UI.endShown = false; App.frCtx = null; $("end").classList.add("hidden"); $("hud").classList.add("hidden"); $("dock").classList.add("hidden");
+    $("playcall").classList.add("hidden"); $("pat").classList.add("hidden"); $("meter").classList.add("hidden"); crowdStop();
+    newGame(cloneTeam(App.home), cloneTeam(App.away), { seed: (Date.now() & 0xffff), bot: true, attract: true }); R.fieldKey = ""; camUpdate(0, true);
+    FUI.render(); UI.showRaw("fr"); musicStart();
+  },
   pause: function (on) { App.paused = on; $("pause").classList.toggle("hidden", !on); audioSuspend(on); },
   showEnd: function () {
-    if (!App.recorded) { App.recorded = true; if (G.outcome === "win") App.save.w++; else if (G.outcome === "lose") App.save.l++; else App.save.t++; App.persist();
+    if (!App.recorded) { App.recorded = true; if (!App.frCtx) { if (G.outcome === "win") App.save.w++; else if (G.outcome === "lose") App.save.l++; else App.save.t++; } App.persist();
       sfx(G.outcome === "win" ? "win" : "lose"); notifyGameEnd(G.outcome === "win" ? "win" : G.outcome === "tie" ? "lose" : G.outcome); }
     App.st = "end"; crowdStop(); UI.showEnd();
   },
@@ -147,6 +173,7 @@ var App = {
       if (G.phase === "kick") { kickTap(); return; }
       var r = g.getBoundingClientRect(); J.id = e.pointerId; J.ox = e.clientX - r.left; J.oy = e.clientY - r.top; J.x = 0; J.y = 0; J.t = performance.now(); J.moved = 0;
       try { g.setPointerCapture(e.pointerId); } catch (er) {}
+      if (G.phase === "presnap" && G.poss === "A") { var pk = pickPlayerAt(J.ox, J.oy, "H", 40); if (pk) selectDefender(pk); J.id = null; return; }
       if (G.phase === "live") { joy.style.left = J.ox + "px"; joy.style.top = J.oy + "px"; joy.classList.remove("hidden"); knob.style.transform = "translate(-50%,-50%)"; }
       e.preventDefault();
     });
@@ -179,10 +206,11 @@ var App = {
   tapAt: function (cx, cy) {
     var pl = G.play; if (!pl) return;
     if (G.poss === "H" && pl.off.type === "pass" && !pl.thrown && !pl.crossed) {
-      var best = null, bd = 40; RECV_KEYS.forEach(function (k) { var r = byRole("H", k.role); if (!r || r.assign !== "route") return; var p = projectCss(r.x, r.y, 1.6); var d = Math.hypot(p.x - cx, p.y - cy); if (d < bd) { bd = d; best = k.role; } });
+      var best = null, bd = 40; RECV_KEYS.forEach(function (k) { var r = byRole("H", k.role); if (!r || r.assign !== "route") return; var p = projectCss(r.x, r.y, 1.6); if (!p.on) return; var d = Math.hypot(p.x - cx, p.y - cy); if (d < bd) { bd = d; best = k.role; } });
       if (best) App.inp.throwTo = best; return;
     }
     if (pl.carrier && pl.carrier.tm === "H") { App.inp.juke = true; return; }
+    var pk = pickPlayerAt(cx, cy, "H", 30); if (pk && pk !== G.ctl) { selectDefender(pk); return; }
     App.inp.dive = true;
   },
   readInput: function () {
@@ -190,7 +218,7 @@ var App = {
     var kx = (k["arrowright"] || k["d"] ? 1 : 0) - (k["arrowleft"] || k["a"] ? 1 : 0), ky = (k["arrowdown"] || k["s"] ? 1 : 0) - (k["arrowup"] || k["w"] ? 1 : 0);
     if (kx || ky) { var l = Math.sqrt(kx * kx + ky * ky); mx = kx / l; my = ky / l; }
     // screen -> world: screen up = +y
-    var i = App.inp; return { mx: mx, my: -my, juke: i.juke, dive: i.dive, sw: i.sw, throwTo: i.throwTo };
+    var i = App.inp, cd = R.cam.dir || 1; return { mx: mx * cd, my: -my * cd, juke: i.juke, dive: i.dive, sw: i.sw, throwTo: i.throwTo };
   },
   clearEdges: function () { var i = App.inp; i.juke = false; i.dive = false; i.sw = false; i.throwTo = null; },
   advance: function (dt, inp) {
@@ -290,7 +318,7 @@ var GAME_API = {
   probe: function () { var c = G && G.ctl; return { hero: c ? { x: c.x, y: 0, z: c.y, yaw: 0, scale: 1 } : null, camera: { x: R.cam.x, y: 0, z: R.cam.y }, threats: G ? G.players.filter(function (p) { return p.onField && p.tm !== G.poss; }).length : 0 }; },
   project: function (x, y, z) { return projectCss(x, z !== undefined ? z : y, 0); },
   // QA helpers
-  _g: function () { return G; }, _sim: { beginPlayCall: function () { beginPlayCall(); }, userCall: function (a, b, c) { userCall(a, b, c); }, kickTap: function () { kickTap(); }, userPAT: function (c) { userPAT(c); } }, _app: function () { return App; }, _ui: function () { return UI; }
+  _g: function () { return G; }, _fr: function () { return FR; }, _sim: { beginPlayCall: function () { beginPlayCall(); }, userCall: function (a, b, c) { userCall(a, b, c); }, kickTap: function () { kickTap(); }, userPAT: function (c) { userPAT(c); } }, _app: function () { return App; }, _ui: function () { return UI; }
 };
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", App.boot); else App.boot();

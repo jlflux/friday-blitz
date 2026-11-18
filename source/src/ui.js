@@ -23,9 +23,11 @@ var UI = {
     var ui = $("ui");
     ui.innerHTML = [
       '<div id="title" class="scr hidden"><div class="tlogo"><canvas id="logo" width="80" height="44"></canvas><div class="tag" id="tTag"></div></div>',
-      '<div class="tbtns"><button class="btn big pri" id="bPlay"></button><div class="rec" id="tRec"></div></div><div class="langs" id="langs"></div></div>',
+      '<div class="tbtns"><button class="btn big pri" id="bFr"></button><button class="btn big sec2" id="bPlay"></button><div class="rec" id="tRec"></div></div><div class="langs" id="langs"></div></div>',
+      '<div id="fr" class="scr hidden"></div>',
       '<div id="setup" class="scr hidden"><div class="ph" id="sTitle"></div><div id="cards"></div>',
       '<div class="opt"><div class="ol" id="lDiff"></div><div class="seg" id="segDiff"></div></div>',
+      '<div class="opt"><button class="btn sm sec" id="bCam"></button></div>',
       '<div class="opt"><div class="ol" id="lQtr"></div><div class="stepper"><button class="btn sm" id="qMinus">-</button><span id="qVal"></span><button class="btn sm" id="qPlus">+</button></div></div>',
       '<div class="row2"><button class="btn sec" id="bBack"></button><button class="btn big pri" id="bKick"></button></div></div>',
       '<div id="editor" class="scr hidden"><div class="etabs"><button class="tab" id="tabTeam"></button><button class="tab" id="tabRoster"></button><button class="btn pri sm" id="bDone"></button></div><div id="ebody"></div></div>',
@@ -37,13 +39,16 @@ var UI = {
       '<div id="joy" class="hidden"><div id="knob"></div></div>',
       '<div id="playcall" class="panel hidden"></div><div id="pat" class="panel hidden"></div>',
       '<div id="meter" class="hidden"><div class="mt" id="mTitle"></div><div id="mbar"><div id="mwin"></div><div id="mneedle"></div></div><div class="mh" id="mHint"></div></div>',
-      '<div id="pause" class="scr dim hidden"><div class="ph" id="pTitle"></div><button class="btn big pri" id="pRes"></button><button class="btn sec" id="pRst"></button><button class="btn sec" id="pQuit"></button></div>',
+      '<div id="pause" class="scr dim hidden"><div class="ph" id="pTitle"></div><button class="btn big pri" id="pRes"></button><button class="btn sec" id="pCam"></button><button class="btn sec" id="pRst"></button><button class="btn sec" id="pQuit"></button></div>',
       '<div id="end" class="hidden"><div class="dim2"></div><div class="rays"></div><div class="ecwrap"><div class="ec-copy-panel" data-end-copy-panel="1"><div class="eid" data-end-id="1"><img id="eIcon" alt=""><span id="eName"></span></div>',
       '<div class="et" id="eTitle"></div><div class="escore" id="eScore" data-hud="final"></div><div class="es" id="eSub"></div><div class="emvp" id="eMvp"></div><div class="erec" id="eRec"></div></div>',
       '<div class="eact"><button class="btn big" id="eNext"></button><button class="btn sec" id="eReplay"></button><button class="btn sm ghost" id="eTitleB"></button></div></div></div>',
       '<div id="tune" class="hidden"></div>'
     ].join("");
     onTap($("bPlay"), function () { musicStart(); UI.show("setup"); });
+    onTap($("bFr"), function () { musicStart(); FUI.open(); });
+    onTap($("bCam"), function () { setParam("camera", P("camera") === "pro" ? "classic" : "pro"); App.persist(); UI.applyLang(); });
+    onTap($("pCam"), function () { setParam("camera", P("camera") === "pro" ? "classic" : "pro"); App.persist(); UI.applyLang(); });
     onTap($("bBack"), function () { UI.show("title"); });
     onTap($("bKick"), function () { App.startGame(); });
     onTap($("qMinus"), function () { setParam("quarterMinutes", P("quarterMinutes") - 1); UI.renderSetup(); });
@@ -55,15 +60,16 @@ var UI = {
     onTap($("bMute"), function () { AU.muted = !AU.muted; audioVolumes(); $("bMute").classList.toggle("off", AU.muted); });
     onTap($("pRes"), function () { App.pause(false); });
     onTap($("pRst"), function () { App.pause(false); App.startGame(); });
-    onTap($("pQuit"), function () { App.pause(false); App.toTitle(); });
-    onTap($("eNext"), function () { App.next(); });
+    onTap($("pQuit"), function () { App.pause(false); if (App.frCtx) { App.frCtx = null; App.toFranchise(); } else App.toTitle(); });
+    onTap($("eNext"), function () { if (performance.now() < (UI.endLock || 0)) return; if (App.frCtx) App.frFinish(); else App.next(); });
     onTap($("eReplay"), function () { App.startGame(); });
-    onTap($("eTitleB"), function () { App.toTitle(); });
+    onTap($("eTitleB"), function () { if (App.frCtx) App.frFinish(); else App.toTitle(); });
     UI.drawLogo(); UI.applyLang();
   },
   applyLang: function () {
     document.documentElement.lang = LANG; document.body.classList.toggle("cjk", LANG === "zh");
-    $("tTag").textContent = T("title.tag"); $("bPlay").textContent = T("ui.play");
+    $("tTag").textContent = T("title.tag"); $("bPlay").textContent = T("menu.quick"); $("bFr").textContent = T("menu.fr");
+    $("bCam").textContent = T("set.camera") + ": " + T("cam." + P("camera")); $("pCam").textContent = T("pause.camera", { c: T("cam." + P("camera")) });
     $("sTitle").textContent = T("setup.title"); $("lDiff").textContent = T("setup.diff"); $("lQtr").textContent = T("setup.qtr");
     $("bBack").textContent = "◀"; $("bKick").textContent = T("setup.start");
     $("tabTeam").textContent = T("edit.team"); $("tabRoster").textContent = T("edit.roster"); $("bDone").textContent = T("edit.done");
@@ -75,6 +81,7 @@ var UI = {
     UI.renderRecord();
     if (UI.screen === "setup") UI.renderSetup();
     if (UI.screen === "editor") UI.renderEditor();
+    if (UI.screen === "fr") FUI.render();
     if (G && !G.attract) { UI.hud(); if (G.phase === "playcall") UI.showPlaycall(); }
     if (UI.endShown) UI.showEnd(true);
   },
@@ -94,11 +101,12 @@ var UI = {
     c.fillStyle = "#ffd23f"; c.fillRect(4, 29, 72, 1); c.fillStyle = "#e8331c"; c.fillRect(4, 30, 72, 1);
   },
   renderRecord: function () { var s = App.save; $("tRec").textContent = s && (s.w + s.l + s.t) ? T("ui.record", { w: s.w, l: s.l, t: s.t }) : ""; },
+  showRaw: function (name) { ["title", "setup", "editor", "fr"].forEach(function (n) { $(n).classList.toggle("hidden", n !== name); }); UI.screen = name; },
   show: function (name) {
-    ["title", "setup", "editor"].forEach(function (n) { $(n).classList.toggle("hidden", n !== name); });
+    ["title", "setup", "editor", "fr"].forEach(function (n) { $(n).classList.toggle("hidden", n !== name); });
     UI.screen = name; if (name === "setup") UI.renderSetup(); if (name === "title") UI.renderRecord();
   },
-  hideScreens: function () { ["title", "setup", "editor"].forEach(function (n) { $(n).classList.add("hidden"); }); UI.screen = "game"; },
+  hideScreens: function () { ["title", "setup", "editor", "fr"].forEach(function (n) { $(n).classList.add("hidden"); }); UI.screen = "game"; },
 
   // ---- setup ----
   renderSetup: function () {
@@ -123,21 +131,22 @@ var UI = {
   },
   paintPreview: function (cv, team, away) {
     var c = cv.getContext("2d"); c.clearRect(0, 0, cv.width, cv.height);
-    var pal = teamColors(team, away), qb = team.roster[0], sp = buildPlayerSprites(pal, SKINS[qb.skin || 0], qb.num);
+    var pal = teamColors(team, away), qb = (team.roster && team.roster[0]) || { skin: 1, num: 7 }, sp = buildPlayerSprites(pal, SKINS[qb.skin || 0], qb.num);
     c.drawImage(sp.down[0], 0, 1); c.drawImage(sp.up[0], 12, 1); c.drawImage(sp.side[1], 24, 1);
   },
 
   // ---- editor ----
   openEditor: function (which) { UI.edWhich = which; UI.edTab = UI.edTab || "team"; UI.edUnit = UI.edUnit || "O"; UI.show("editor"); UI.renderEditor(); },
-  closeEditor: function () { App.saveTeams(); UI.show("setup"); },
+  closeEditor: function () { if (UI.edWhich === "fr") { frSave(); R.fieldKey = ""; FUI.render(); UI.showRaw("fr"); return; } App.saveTeams(); UI.show("setup"); },
   renderEditor: function () {
-    var t = UI.edWhich === "home" ? App.home : App.away, away = UI.edWhich === "away", body = $("ebody");
+    var isFr = UI.edWhich === "fr"; if (isFr) UI.edTab = "team"; $("tabRoster").style.display = isFr ? "none" : "";
+    var t = isFr ? FR.teams[FR.user] : UI.edWhich === "home" ? App.home : App.away, away = UI.edWhich === "away", body = $("ebody");
     $("tabTeam").classList.toggle("on", UI.edTab === "team"); $("tabRoster").classList.toggle("on", UI.edTab === "roster");
     body.innerHTML = "";
     var head = el("div", "ehead"); var pv = makeCanvas(36, 18); pv.className = "pv big"; UI.paintPreview(pv, t, away); head.appendChild(pv);
-    head.appendChild(el("div", "ehn", '<div class="tn">' + esc(t.name) + '</div><div class="tm2">' + esc(t.mascot) + " · " + esc(T("setup.ovr", { n: teamOvr(t) })) + "</div>"));
+    head.appendChild(el("div", "ehn", '<div class="tn">' + esc(t.name) + '</div><div class="tm2">' + esc(t.mascot) + (isFr ? "" : " · " + esc(T("setup.ovr", { n: teamOvr(t) }))) + "</div>"));
     body.appendChild(head);
-    var refreshHead = function () { UI.paintPreview(pv, t, away); head.querySelector(".tn").textContent = t.name; head.querySelector(".tm2").textContent = t.mascot + " · " + T("setup.ovr", { n: teamOvr(t) }); };
+    var refreshHead = function () { UI.paintPreview(pv, t, away); head.querySelector(".tn").textContent = t.name; head.querySelector(".tm2").textContent = t.mascot + (isFr ? "" : " · " + T("setup.ovr", { n: teamOvr(t) })); };
     if (UI.edTab === "team") {
       function field(label, key, max, upper) {
         var w = el("label", "fld", "<span>" + esc(label) + "</span>"), inp = el("input"); inp.type = "text"; inp.maxLength = max; inp.value = t[key];
@@ -168,7 +177,7 @@ var UI = {
       choice(T("edit.away"), "awayWhite", [[true, "opt.on"], [false, "opt.off"]]);
       var rr = el("div", "row2"); var rs = el("button", "btn sec", esc(T("edit.reset")));
       onTap(rs, function () { var fresh = makeTeam(t.school, App.seedFor(UI.edWhich)); for (var k in fresh) if (k !== "roster") t[k] = fresh[k]; UI.renderEditor(); });
-      rr.appendChild(rs); body.appendChild(rr);
+      if (!isFr) { rr.appendChild(rs); body.appendChild(rr); }
     } else {
       var sub = el("div", "seg units");
       [["O", "edit.off"], ["D", "edit.def"], ["K", "edit.st"]].forEach(function (u) { var b = el("button", "btn sm" + (UI.edUnit === u[0] ? " on" : ""), esc(T(u[1])));
@@ -230,11 +239,12 @@ var UI = {
     }
     if (ph === "pat") UI.showPAT();
     if (ph === "kick" && G.kick && G.kick.team === "H" && !G.bot) { $("meter").classList.remove("hidden"); UI.hintOnce("kick"); }
+    if (ph === "presnap" && G.poss === "A" && !G.bot) UI.hintOnce("pick", 3);
     if (ph === "live") { var pl = G.play; if (G.poss === "H") UI.hintOnce(pl.off.type === "pass" ? "offense" : "run"); else UI.hintOnce("defense"); }
     if (ph === "final") setTimeout(function () {}, 0);
     UI.hud(); UI.dock();
   },
-  hintOnce: function (k) { UI.hintSeen[k] = (UI.hintSeen[k] || 0) + 1; if (UI.hintSeen[k] <= 2) UI.hint(T("hint." + k)); },
+  hintOnce: function (k, n) { UI.hintSeen[k] = (UI.hintSeen[k] || 0) + 1; if (UI.hintSeen[k] <= (n || 2)) UI.hint(T("hint." + k)); },
   hint: function (txt) { if (UI.endShown) return; var h = $("hint"); h.textContent = txt; h.classList.add("show"); clearTimeout(UI.hintTO); UI.hintTO = setTimeout(function () { h.classList.remove("show"); }, 3600); },
   showPlaycall: function () {
     if (G.bot) return;
@@ -251,9 +261,10 @@ var UI = {
       pc.appendChild(grid);
       var row = el("div", "pcr"); var fb = el("button", "btn sm" + (flip ? " on" : ""), "⇄ " + esc(T("pc.flip")));
       onTap(fb, function () { UI.flip = !UI.flip; UI.showPlaycall(); }); row.appendChild(fb);
-      if (G.down === 4 && !G.twoPt) {
+      var lateHalf = (G.quarter === 2 || G.quarter === 4) && G.clock < 40;
+      if ((G.down === 4 || lateHalf) && !G.twoPt) {
         var distFG = Math.round(100 - ydFromOwn("H", G.los) + 17);
-        if (!G.ot) { var pb = el("button", "btn sm sec", esc(T("pc.punt"))); onTap(pb, function () { userCall("punt"); UI.closePanels(); }); row.appendChild(pb); }
+        if (!G.ot && G.down === 4) { var pb = el("button", "btn sm sec", esc(T("pc.punt"))); onTap(pb, function () { userCall("punt"); UI.closePanels(); }); row.appendChild(pb); }
         if (distFG <= 60) { var fg = el("button", "btn sm sec", esc(T("pc.fg", { n: distFG }))); onTap(fg, function () { userCall("fg"); UI.closePanels(); }); row.appendChild(fg); }
       }
       pc.appendChild(row);
@@ -353,14 +364,17 @@ var UI = {
     var nextT = App.peekNext();
     var sub = o === "win" ? T("end.win.sub", { team: h.name, score: G.score.H + "–" + G.score.A, next: nextT.name }) : o === "tie" ? T("end.tie.sub") : o === "timeout" ? T("end.timeout.sub") :
       (G.passFail > G.runFail ? T("end.lose.sub") : T("end.lose.sub.run"));
+    if (App.frCtx) sub = o === "win" ? T("end.fr.win", { team: h.name, score: G.score.H + "–" + G.score.A }) : T("end.fr.lose", { opp: a.name, score: G.score.A + "–" + G.score.H });
     if (P("endTitle")) title = P("endTitle"); if (P("endSub")) sub = P("endSub");
     $("eTitle").textContent = title; $("eSub").textContent = sub;
     $("eScore").innerHTML = '<span style="color:' + esc(h.primary) + '">■</span> ' + esc(h.abbr) + " " + G.score.H + "  –  " + G.score.A + " " + esc(a.abbr) + ' <span style="color:' + esc(a.primary) + '">■</span>';
     var mvp = App.mvp(); $("eMvp").textContent = mvp ? T("end.mvp", { num: mvp.r.num, name: mvp.r.name, yds: mvp.yds }) : "";
-    var s = App.save; $("eRec").textContent = T("end.record", { w: s.w, l: s.l, t: s.t });
+    var s = App.save; $("eRec").textContent = App.frCtx ? "" : T("end.record", { w: s.w, l: s.l, t: s.t });
     $("eName").textContent = CONFIG.meta.title; var ic = document.querySelector('link[rel="icon"]'); if (ic) $("eIcon").src = ic.href;
     $("eNext").textContent = P("ctaText") || T("ui.next"); $("eReplay").textContent = o === "win" ? T("ui.playAgain") : T("ui.replay"); $("eTitleB").textContent = T("ui.title");
     $("eNext").className = "btn big " + (o === "win" ? "pri" : "sec2"); $("eReplay").className = "btn " + (o === "win" ? "sec" : "pri big");
+    if (App.frCtx) { $("eNext").textContent = T("fr.continue"); $("eNext").className = "btn big pri"; $("eReplay").classList.add("hidden"); $("eTitleB").classList.add("hidden"); }
+    else { $("eReplay").classList.remove("hidden"); $("eTitleB").classList.remove("hidden"); }
     if (!refresh) { e.classList.remove("in"); void e.offsetWidth; e.classList.add("in"); UI.endLock = performance.now() + 900; }
   }
 };
