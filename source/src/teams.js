@@ -4,16 +4,14 @@ var DEF_POS = ["DE", "DT", "DT", "DE", "LB", "LB", "LB", "CB", "CB", "FS", "SS"]
 var FIRST = ["Jalen","Cody","Marcus","Tyler","Devin","Caleb","Brady","Isaiah","Jordan","Mason","Elijah","Trey","Luke","Andre","Nate","Hunter","Malik","Grant","Owen","Darius","Cole","Xavier","Logan","Tanner","Jace","Micah","Wyatt","Dante","Reggie","Evan","Kobe","Josiah","Carter","Bo","Ty","Deshawn","Riley","Gage","Rashad","Colt","Miles","Zeke","Jamal","Parker","Quinn","Seth","Beau","Terrell"];
 var LAST = ["Walker","Hayes","Brooks","Carter","Jenkins","Price","Ward","Bennett","Coleman","Foster","Simmons","Reed","Patterson","Hughes","Barnes","Fisher","Henderson","Bryant","Russell","Griffin","Wallace","Mitchell","Turner","Parker","Cooper","Howard","Sanders","Long","Ross","Morgan","Bell","Murphy","Rivera","Ellis","Dawson","Holt","Pruitt","McCall","Boyd","Lane","Moss","Tate","Pope","Kirby","Shaw","Gaines","Lyles","Crenshaw"];
 
-var SCHOOLS = [
-  { name: "Pine Ridge", mascot: "Panthers", abbr: "PRHS", primary: "#c8102e", secondary: "#f2f2f2", helmet: "secondary", pants: "white" },
-  { name: "Riverside", mascot: "Rams", abbr: "RVR", primary: "#1e4fd8", secondary: "#ffc72c", helmet: "secondary", pants: "secondary" },
-  { name: "Oak Hollow", mascot: "Owls", abbr: "OAK", primary: "#0f6b3a", secondary: "#f2c230", helmet: "primary", pants: "white" },
-  { name: "Cedar Falls", mascot: "Comets", abbr: "CFHS", primary: "#5b2a86", secondary: "#e8e8e8", helmet: "primary", pants: "secondary" },
-  { name: "Mill Creek", mascot: "Mustangs", abbr: "MILL", primary: "#e86a10", secondary: "#14141c", helmet: "secondary", pants: "white" },
-  { name: "Lakeview", mascot: "Lions", abbr: "LAKE", primary: "#0b2a5b", secondary: "#c9a227", helmet: "secondary", pants: "secondary" },
-  { name: "Granite City", mascot: "Grizzlies", abbr: "GCHS", primary: "#6d1f2a", secondary: "#bfc3c9", helmet: "secondary", pants: "secondary" },
-  { name: "Bayou Bend", mascot: "Gators", abbr: "BAY", primary: "#00807a", secondary: "#f28c28", helmet: "white", pants: "white" }
-];
+// quick-game schools come from the real 5A/6A list in aldata.js
+var SCHOOLS = (function () { var out = [];
+  ["6A", "5A"].forEach(function (cls) { AL_LEAGUE[cls].forEach(function (reg, ri) { reg.forEach(function (row) { var f = row.split("|");
+    var light = lum(f[3]) > 150, ls = lum(f[4]) > 170;
+    out.push({ name: f[0], mascot: f[1], abbr: f[2], primary: f[3], secondary: f[4], helmet: light ? "secondary" : "primary", pants: ls ? "secondary" : "white", cls: cls, reg: ri + 1, prestige: +f[5] }); }); }); });
+  return out; })();
+var SCHOOL_HOME = Math.max(0, SCHOOLS.map(function (s) { return s.name; }).indexOf("Homewood")), SCHOOL_AWAY = Math.max(0, SCHOOLS.map(function (s) { return s.name; }).indexOf("Mountain Brook"));
+function schoolIdx(name) { for (var i = 0; i < SCHOOLS.length; i++) if (SCHOOLS[i].name === name) return i; return -1; }
 
 var COLOR_SWATCHES = ["#c8102e","#e86a10","#ffc72c","#c9a227","#0f6b3a","#2fa84f","#00807a","#1e4fd8",
                       "#0b2a5b","#5b2a86","#d6337a","#6d1f2a","#14141c","#5a5f6a","#bfc3c9","#f2f2f2"];
@@ -61,7 +59,7 @@ function makeRoster(rng, q) {
 function makeTeam(idx, seed) {
   var s = SCHOOLS[idx % SCHOOLS.length];
   var rng = mulberry32((Math.imul((seed || 77) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(idx + 1, 0xc2b2ae35)) >>> 0); rng(); rng();
-  var q = idx === 0 ? 0.3 : (rng() * 1.2 - 0.6);
+  var q = ((s.prestige || 55) - 55) / 55 + (rng() * 0.6 - 0.3);
   return { id: "t" + idx + "_" + (seed || 0), school: idx, name: s.name, mascot: s.mascot, abbr: s.abbr, primary: s.primary, secondary: s.secondary,
            helmet: s.helmet, pants: s.pants, awayWhite: true, roster: makeRoster(rng, q) };
 }

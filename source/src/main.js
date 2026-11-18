@@ -52,8 +52,8 @@ var App = {
     recomputeParams();
     App.pickLang();
     // teams
-    if (sv && sv.home && sv.home.roster) { App.home = sv.home; App.away = sv.away; App.awayIdx = sv.awayIdx || 1; }
-    else { App.home = makeTeam(0, App.seeds.home); App.awayIdx = 1; App.away = makeTeam(1, App.seeds.away); }
+    if (sv && sv.home && sv.home.roster && sv.home.school >= 0 && SCHOOLS[sv.home.school] && SCHOOLS[sv.home.school].name === sv.home.name && sv.away && SCHOOLS[sv.away.school] && SCHOOLS[sv.away.school].name === sv.away.name) { App.home = sv.home; App.away = sv.away; App.awayIdx = sv.awayIdx || sv.away.school; }
+    else { App.home = makeTeam(SCHOOL_HOME, App.seeds.home); App.awayIdx = SCHOOL_AWAY; App.away = makeTeam(SCHOOL_AWAY, App.seeds.away); }
     renderInit($("cv"));
     UI.init();
     App.bindInput();
@@ -70,6 +70,7 @@ var App = {
     if (HOST) { HOST.onUpdate = App.onHostUpdate; HOST.onCommand = App.onHostCommand; }
     if ("tune" in QS) App.buildTune();
     window.__game = GAME_API;
+    if (TEST) window.__fr = { get FR() { return FR; }, tm: tm, PL: PL, teamPlayers: teamPlayers, money: money, OFF_STEPS: OFF_STEPS, App: App, FUI: FUI };
     requestAnimationFrame(App.frame);
     if (HOST && typeof HOST.ready === "function") { try { HOST.ready(); } catch (e) {} }
   },
@@ -110,23 +111,26 @@ var App = {
   next: function () {
     var n = App.peekNext(); App.seeds.away += 13; App.away = makeTeam(n.idx, App.seeds.away); App.awayIdx = n.idx; App.persist(); App.startGame();
   },
-  startFranchiseGame: function () {
-    var g = currentUserGame(); if (!g) return;
+  startFranchiseGame: function (bot) {
+    var g = userGameNow(); if (!g || g.done) return;
     audioInit(); musicStop(); crowdStart();
-    var u = userEngineTeam(), oppId = g.h === FR.user ? g.a : g.h, opp = cpuEngineTeam(oppId), userHome = g.h === FR.user;
-    if (FR.phase === "playoffs" && FR.playoffs.cur === FR.playoffs.rounds.length - 1) userHome = true;
-    var mods = { off: FR.upg.staff * 0.4 + FR.upg.film * 0.2, def: FR.upg.staff * 0.4 + FR.upg.film * 0.3 };
-    App.frCtx = { g: g, ids: u.ids, userHome: g.h === FR.user };
-    var seed = ((Date.now() ^ (Math.random() * 4294967296)) >>> 0);
-    newGame(u.team, opp, { seed: seed, userAway: !userHome, mods: mods, franchise: true }); R.fieldKey = "";
+    var oppId = g.h === FR.user ? g.a : g.h, u = engineTeam(FR.user), o = engineTeam(oppId), userHome = g.h === FR.user || !!g.neutral;
+    var s = FR.staff, mods = { off: (s.OC ? s.OC.r : 0) * 0.25 + FR.fac.film * 0.1, def: (s.DC ? s.DC.r : 0) * 0.25 + FR.fac.film * 0.1 };
+    App.frCtx = { g: g, idsU: u.ids, idsO: o.ids, userHome: g.h === FR.user, bot: !!bot };
+    var seed = ((Date.now() ^ (Math.random() * 4294967296)) >>> 0), q0 = BASE.quarterMinutes;
+    BASE.quarterMinutes = cl(FR.settings.qmin || 4, 1, 5);
+    newGame(u.team, o.team, { seed: seed, userAway: !userHome, mods: mods, franchise: true, bot: !!bot, homeAdv: g.neutral ? 0 : undefined });
+    BASE.quarterMinutes = q0; R.fieldKey = "";
     App.st = "play"; App.playT = 0; App.recorded = false; UI.bannerQ = []; UI.bannerT = 0; UI.dockKey = ""; UI.flip = false;
     UI.startGameUI(); camUpdate(0, true); ev("begin");
   },
   frFinish: function () {
     var ctx = App.frCtx; if (!ctx || !G) return; App.frCtx = null;
-    var us = G.score.H, them = G.score.A, rows = engineStatsToRows(G.stats, ctx.ids);
-    var hs = ctx.userHome ? us : them, as = ctx.userHome ? them : us;
-    finishUserGame(ctx.g, hs, as, rows); FUI.toastResult(ctx.g);
+    var us = G.score.H, them = G.score.A, hs = ctx.userHome ? us : them, as = ctx.userHome ? them : us;
+    if (hs === as) { if (G.rng() < 0.5) hs += 3; else as += 3; }
+    var res = engineResult(ctx.g, G.stats, ctx.idsU, ctx.idsO, hs, as);
+    recordGame(ctx.g, res, FR.week); advanceWeek(); FUI.toastResult(ctx.g);
+    if (FR.phase === "offseason") FUI.page = "offseason";
     App.toFranchise();
   },
   toFranchise: function () {
