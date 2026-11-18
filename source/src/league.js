@@ -139,7 +139,7 @@ function staffBonus() {
 
 // ---- new franchise ----
 function frCreate(slot, coachName, seed) {
-  FR = { v: 2, slot: slot, rs: seed | 0, nid: 1, year: 2026, week: 0, phase: "preseason", user: -1, teams: [], pl: {}, tm: {}, sched: [], po: null, poll: { "5A": [], "6A": [] },
+  FR = { v: 2, slot: slot, scope: typeof Cloud !== "undefined" ? Cloud.scope() : "", rs: seed | 0, nid: 1, year: 2026, week: 0, phase: "preseason", user: -1, teams: [], pl: {}, tm: {}, sched: [], po: null, poll: { "5A": [], "6A": [] },
     news: [], hist: [], awards: {}, rec: { g: {}, s: {}, c: {}, t: {} }, depth: {}, staff: {}, fac: { weight: 0, film: 0, stadium: 0, practice: 0, locker: 0 },
     funds: 25000, exposure: 0, practice: "balanced", scout: { pts: 0, board: [] }, off: null, coach: { name: coachName || "Coach", w: 0, l: 0, tt: 0, pw: 0, pl: 0, seasons: 0, rep: 40 },
     watched: {}, filmLeft: 3, settings: { qmin: 4, diff: "normal" }, ledger: [] };
@@ -163,6 +163,7 @@ function frPick(teamId) {
   STAFF_ROLES.forEach(function (r) { FR.staff[r] = makeStaff(r, 2 + (t.prestige > 60 ? 1 : 0)); });
   autoDepth(); refreshOvr(teamId);
   makeSchedule(); updatePoll(); genFeeder();
+  if (typeof Cloud !== "undefined") Cloud.track("franchise_new", { school: t.name, cls: t.cls, coach: FR.coach.name });
   news("program", "Welcome to " + t.name + ". " + FR.coach.name + " takes over the " + t.mascot + " for the " + FR.year + " season.");
   frSave();
 }
@@ -374,7 +375,7 @@ function recordGame(g, res, w) {
   if (userIn) { g.lines = res.lines; g.scoring = res.scoring; if (res.plays && res.plays.length) { FR.sched.forEach(function (wk) { wk.forEach(function (x) { delete x.plays; }); }); if (FR.po) poGames().forEach(function (x) { delete x.plays; }); g.plays = res.plays; } updateRecords(g); }
   applyGame(g);
   if (res.inj) res.inj.forEach(function (pid) { var p = PL(pid); if (p && p.t === FR.user) news("injury", pnm(p) + " (" + p.pos + ") was hurt against " + tm(g.h === FR.user ? g.a : g.h).name + " and will miss " + p.inj + " week" + (p.inj > 1 ? "s" : "") + "."); });
-  if (userIn) gameNews(g, w);
+  if (userIn) { gameNews(g, w); if (typeof Cloud !== "undefined") { var um = g.h === FR.user ? g.hs : g.as, uo = g.h === FR.user ? g.as : g.hs; Cloud.track("game", { mode: "franchise", how: FR.how || "sim", school: tm(FR.user).name, opp: tm(g.h === FR.user ? g.a : g.h).name, res: (um > uo ? "W " : "L ") + um + "-" + uo, po: !!g.po }); } FR.how = null; }
 }
 function gameNews(g, w) {
   var us = g.h === FR.user, my = us ? g.hs : g.as, th = us ? g.as : g.hs, opp = tm(us ? g.a : g.h), me = tm(FR.user);
@@ -523,6 +524,7 @@ function endSeason() {
   if ((u.cls === "5A" ? champ5 : champ6) === FR.user) { FR.coach.tt++; u.prestige = cl(u.prestige + 6, 0, 100); news("title", tm(FR.user).name + " wins the " + FR.year + " Class " + u.cls + " state championship!"); }
   FR.hist.unshift({ y: FR.year, w: u.w, l: u.l, rw: u.rw, rl: u.rl, place: regionPlace(FR.user), res: res, c5: champ5, c6: champ6, rank: rankOf(FR.user) });
   FR.coach.seasons++;
+  if (typeof Cloud !== "undefined") Cloud.track("season", { school: u.name, year: FR.year, w: u.w, l: u.l, res: res });
   FR.teams.forEach(function (t) { var d = (t.w - t.l) * 0.5 + (inPlayoffs(t.id) ? 1 : -1); t.prestige = Math.round(cl(t.prestige + d * 0.8 + (t.prestige < 45 ? 0.6 : t.prestige > 80 ? -0.6 : 0), 5, 99));
     t.hist.unshift({ y: FR.year, w: t.w, l: t.l }); if (t.hist.length > 12) t.hist.length = 12; });
   FR.coach.rep = cl(FR.coach.rep + (u.w - u.l) * 0.8 + (res.indexOf("Champ") >= 0 ? 10 : 0), 0, 100);
@@ -742,8 +744,10 @@ function unpackP(r) { var a = {}; ATTRS.forEach(function (k, i) { a[k] = parseIn
     st: unpackSt(r[12]), cs: unpackSt(r[13]), of: r[14] || [], cm: r[15], fx: r[16] }; if (r[17]) p.nw = 1; calcOvr(p); return p; }
 function frPack() { var o = {}; for (var k in FR) if (k !== "pl") o[k] = FR[k]; var arr = []; for (var id in FR.pl) arr.push(packP(FR.pl[id])); o.plp = arr; return JSON.stringify(o); }
 function frUnpack(str) { var o = JSON.parse(str), pl = {}; (o.plp || []).forEach(function (r) { var p = unpackP(r); pl[p.id] = p; }); delete o.plp; o.pl = pl; return o; }
-function frSave() { if (!FR) return; try { localStorage.setItem(FR_PREFIX + FR.slot, frPack()); localStorage.setItem(FR_ACTIVE, String(FR.slot)); FR.saveErr = false; } catch (e) { FR.saveErr = true; } }
-function frLoadSlot(i) { try { var s = localStorage.getItem(FR_PREFIX + i); if (s) { FR = frUnpack(s); FR.slot = i; FR.teams.forEach(function (t) { refreshOvr(t.id); }); return FR; } } catch (e) {} return null; }
-function frSlotInfo(i) { try { var s = localStorage.getItem(FR_PREFIX + i); if (!s) return null; var o = JSON.parse(s); var t = o.teams[o.user]; return t ? { name: t.name, mascot: t.mascot, abbr: t.abbr, c1: t.c1, c2: t.c2, cls: t.cls, year: o.year, w: t.w, l: t.l, phase: o.phase, week: o.week, coach: o.coach.name, tt: o.coach.tt, cw: o.coach.w, cl: o.coach.l, kb: Math.round(s.length / 1024) } : null; } catch (e) { return null; } }
-function frDeleteSlot(i) { try { localStorage.removeItem(FR_PREFIX + i); if (frActiveSlot() === i) localStorage.removeItem(FR_ACTIVE); } catch (e) {} }
-function frActiveSlot() { try { var v = localStorage.getItem(FR_ACTIVE); return v === null ? -1 : +v; } catch (e) { return -1; } }
+function frKey(i) { return FR_PREFIX + (typeof Cloud !== "undefined" ? Cloud.scope() : "") + i; }
+function frActKey() { return FR_ACTIVE + (typeof Cloud !== "undefined" ? Cloud.scope() : ""); }
+function frSave() { if (!FR) return; if (FR.scope !== undefined && typeof Cloud !== "undefined" && FR.scope !== Cloud.scope()) return; FR.ts = Date.now(); try { localStorage.setItem(frKey(FR.slot), frPack()); localStorage.setItem(frActKey(), String(FR.slot)); FR.saveErr = false; } catch (e) { FR.saveErr = true; } if (typeof Cloud !== "undefined") Cloud.queueSave(FR.slot); }
+function frLoadSlot(i) { try { var s = localStorage.getItem(frKey(i)); if (s) { FR = frUnpack(s); FR.slot = i; FR.scope = typeof Cloud !== "undefined" ? Cloud.scope() : ""; FR.teams.forEach(function (t) { refreshOvr(t.id); }); return FR; } } catch (e) {} return null; }
+function frSlotInfo(i) { try { var s = localStorage.getItem(frKey(i)); if (!s) return null; var o = JSON.parse(s); var t = o.teams[o.user]; return t ? { name: t.name, mascot: t.mascot, abbr: t.abbr, c1: t.c1, c2: t.c2, cls: t.cls, year: o.year, w: t.w, l: t.l, phase: o.phase, week: o.week, coach: o.coach.name, tt: o.coach.tt, cw: o.coach.w, cl: o.coach.l, kb: Math.round(s.length / 1024), ts: o.ts || 0 } : null; } catch (e) { return null; } }
+function frDeleteSlot(i, localOnly) { try { localStorage.removeItem(frKey(i)); if (frActiveSlot() === i) localStorage.removeItem(frActKey()); } catch (e) {} if (!localOnly && typeof Cloud !== "undefined") Cloud.deleteSlot(i); }
+function frActiveSlot() { try { var v = localStorage.getItem(frActKey()); return v === null ? -1 : +v; } catch (e) { return -1; } }

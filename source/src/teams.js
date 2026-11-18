@@ -5,12 +5,15 @@ var FIRST = ["Jalen","Cody","Marcus","Tyler","Devin","Caleb","Brady","Isaiah","J
 var LAST = ["Walker","Hayes","Brooks","Carter","Jenkins","Price","Ward","Bennett","Coleman","Foster","Simmons","Reed","Patterson","Hughes","Barnes","Fisher","Henderson","Bryant","Russell","Griffin","Wallace","Mitchell","Turner","Parker","Cooper","Howard","Sanders","Long","Ross","Morgan","Bell","Murphy","Rivera","Ellis","Dawson","Holt","Pruitt","McCall","Boyd","Lane","Moss","Tate","Pope","Kirby","Shaw","Gaines","Lyles","Crenshaw"];
 
 // quick-game schools come from the real 5A/6A list in aldata.js
-var SCHOOLS = (function () { var out = [];
+function buildSchools() { var out = [];
   ["6A", "5A"].forEach(function (cls) { AL_LEAGUE[cls].forEach(function (reg, ri) { reg.forEach(function (row) { var f = row.split("|");
     var light = lum(f[3]) > 150, ls = lum(f[4]) > 170;
     out.push({ name: f[0], mascot: f[1], abbr: f[2], primary: f[3], secondary: f[4], helmet: light ? "secondary" : "primary", pants: ls ? "secondary" : "white", cls: cls, reg: ri + 1, prestige: +f[5] }); }); }); });
-  return out; })();
-var SCHOOL_HOME = Math.max(0, SCHOOLS.map(function (s) { return s.name; }).indexOf("Homewood")), SCHOOL_AWAY = Math.max(0, SCHOOLS.map(function (s) { return s.name; }).indexOf("Mountain Brook"));
+  return out; }
+var SCHOOLS = buildSchools(), SCHOOL_HOME = 0, SCHOOL_AWAY = 1;
+function rebuildSchools() { if (!SCHOOLS) return; var n = buildSchools(); SCHOOLS.length = 0; n.forEach(function (x) { SCHOOLS.push(x); });
+  var names = SCHOOLS.map(function (s) { return s.name; }); SCHOOL_HOME = Math.max(0, names.indexOf("Homewood")); SCHOOL_AWAY = names.indexOf("Mountain Brook"); if (SCHOOL_AWAY < 0) SCHOOL_AWAY = SCHOOL_HOME === 0 ? 1 : 0; }
+rebuildSchools();
 function schoolIdx(name) { for (var i = 0; i < SCHOOLS.length; i++) if (SCHOOLS[i].name === name) return i; return -1; }
 
 var COLOR_SWATCHES = ["#c8102e","#e86a10","#ffc72c","#c9a227","#0f6b3a","#2fa84f","#00807a","#1e4fd8",

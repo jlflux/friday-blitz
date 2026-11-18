@@ -27,13 +27,17 @@ var FUI = {
   bind: function () {
     if (FUI.bound) return; FUI.bound = true; var root = $("fr");
     root.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
-    root.addEventListener("click", function (e) { var n = e.target.closest("[data-a]"); if (!n || n.disabled || !root.contains(n)) return; e.stopPropagation(); e.preventDefault(); audioInit(); FUI.act(n.getAttribute("data-a"), n.getAttribute("data-v"), n); });
-    root.addEventListener("input", function (e) { var n = e.target, k = n.getAttribute("data-in"); if (k === "coach" && FUI.newSt) FUI.newSt.coach = n.value.slice(0, 24); if (k === "rename" && FR) { FR.coach.name = n.value.slice(0, 24) || "Coach"; tm(FR.user).coach = FR.coach.name; frSave(); } });
-    root.addEventListener("change", function (e) { var n = e.target, k = n.getAttribute("data-ch"); if (k === "posch") { positionChange(n.getAttribute("data-v"), n.value); FUI.render(); } if (k === "qmin") { FR.settings.qmin = +n.value; frSave(); } });
-    root.addEventListener("keydown", function (e) { e.stopPropagation(); });
+    root.addEventListener("click", function (e) { if (/^(INPUT|SELECT|LABEL|OPTION|TEXTAREA)$/.test(e.target.tagName)) return; var n = e.target.closest("[data-a]"); if (!n || n.disabled || !root.contains(n)) return; e.stopPropagation(); e.preventDefault(); audioInit(); FUI.act(n.getAttribute("data-a"), n.getAttribute("data-v"), n); });
+    root.addEventListener("input", function (e) { var n = e.target, k = n.getAttribute("data-in");
+      if (n.getAttribute("data-lg") && FUI.adm) { FUI.lgInput(n, true); return; }
+      if (FUI.acct && k === "ae") FUI.acct.email = n.value; if (FUI.acct && k === "ap") FUI.acct.pw = n.value; if (k === "aq" && FUI.adm) { FUI.adm.q = n.value; FUI.admFilter(); } if (k === "coach" && FUI.newSt) FUI.newSt.coach = n.value.slice(0, 24); if (k === "rename" && FR) { FR.coach.name = n.value.slice(0, 24) || "Coach"; tm(FR.user).coach = FR.coach.name; frSave(); } });
+    root.addEventListener("change", function (e) { var n = e.target, k = n.getAttribute("data-ch");
+      if ((n.getAttribute("data-lg") || n.getAttribute("data-lgs")) && FUI.adm) { FUI.lgInput(n, false); return; } if (k === "posch") { positionChange(n.getAttribute("data-v"), n.value); FUI.render(); } if (k === "qmin") { FR.settings.qmin = +n.value; frSave(); } });
+    root.addEventListener("keydown", function (e) { e.stopPropagation(); var k = e.target.getAttribute && e.target.getAttribute("data-in"); if (e.key === "Enter" && (k === "ae" || k === "ap") && FUI.acct && !FUI.acct.busy) FUI.acctGo(); });
   },
   open: function () {
     FUI.bind(); FUI.modal = null; FUI.watch = null;
+    if (FR && FR.scope !== undefined && FR.scope !== Cloud.scope()) FR = null;
     if (!FR) { var a = frActiveSlot(); if (a >= 0) frLoadSlot(a); }
     if (FR && FR.user >= 0) { FUI.page = FR.phase === "offseason" ? "offseason" : "home"; } else { FR = null; FUI.page = "programs"; }
     FUI.render(); UI.showRaw("fr");
@@ -42,7 +46,7 @@ var FUI = {
   render: function () {
     var root = $("fr"); if (!root) return; var m = $("frMain"), sc = m ? m.scrollTop : 0;
     root.className = "scr fr2"; FUI.bind();
-    if (!FR || FR.user < 0 || FUI.page === "programs" || FUI.page === "new") { root.innerHTML = '<div class="fsolo" id="frMain">' + (FUI.page === "new" ? FUI.pNew() : FUI.pPrograms()) + "</div>" + FUI.modalHtml(); FUI.paint(root); return; }
+    if (!FR || FR.user < 0 || FUI.page === "programs" || FUI.page === "new" || FUI.page === "admin") { root.style.setProperty("--ac", "#3b82f6"); root.innerHTML = '<div class="fsolo' + (FUI.page === "admin" ? " wide" : "") + '" id="frMain">' + (FUI.page === "admin" ? FUI.pAdmin() : FUI.page === "new" ? FUI.pNew() : FUI.pPrograms()) + "</div>" + FUI.modalHtml(); FUI.paint(root); var m3 = $("frMain"); if (m3 && sc) m3.scrollTop = sc; if (FUI.page === "admin") FUI.admFilter(); return; }
     var t = tm(FR.user); root.style.setProperty("--ac", fAccent(t)); root.style.setProperty("--c1", t.c1); root.style.setProperty("--c2", t.c2);
     var body = (FUI["p_" + FUI.page] || FUI.p_home)();
     root.innerHTML = '<div class="fa' + (FUI.nav ? " navon" : "") + '">' + FUI.side() + '<div class="fmain">' + FUI.top() + '<div class="fscroll" id="frMain">' + FUI.toastHtml() + body + "</div></div>" + '<div class="fscrim" data-a="menu"></div></div>' + FUI.modalHtml() + FUI.watchHtml();
@@ -56,7 +60,9 @@ var FUI = {
   },
   toastResult: function (g) { if (!g) return; var us = g.h === FR.user, my = us ? g.hs : g.as, th = us ? g.as : g.hs, opp = tm(us ? g.a : g.h);
     FUI.toast = { g: g, x: (my > th ? "WIN" : "LOSS") + " " + my + "-" + th + (us ? " vs " : " at ") + opp.name, win: my > th }; },
-  toastHtml: function () { var t = FUI.toast; if (!t) return ""; return '<div class="ftoast2 ' + (t.win ? "w" : t.g ? "l" : "") + '"><b>' + fx(t.x) + "</b>" + (t.sub ? "<span>" + fx(t.sub) + "</span>" : "") + (t.g ? fBtn("Box score", "box", "toast", "sm") : "") + fBtn("✕", "untoast", "", "sm ghost") + "</div>"; },
+  toastHtml: function () { var cn = Cloud.on() && (Cloud.notice || (Cloud.signedIn() && Cloud.me.banned)) ? '<div class="ftoast2 l"><b>' + fx(Cloud.notice || "This account has been disabled.") + "</b><span>" + (Cloud.me.banned ? "Your programs are saved on this device only." : "") + "</span>" + (Cloud.notice ? fBtn("✕", "unnotice", "", "sm ghost") : "") + "</div>" : "";
+    return cn + FUI.toastHtml2(); },
+  toastHtml2: function () { var t = FUI.toast; if (!t) return ""; return '<div class="ftoast2 ' + (t.win ? "w" : t.g ? "l" : "") + '"><b>' + fx(t.x) + "</b>" + (t.sub ? "<span>" + fx(t.sub) + "</span>" : "") + (t.g ? fBtn("Box score", "box", "toast", "sm") : "") + fBtn("✕", "untoast", "", "sm ghost") + "</div>"; },
 
   // ---------- chrome ----------
   side: function () {
@@ -68,7 +74,7 @@ var FUI = {
       '<div class="ng">Team</div>' + it("roster", "☰", "Roster") + it("depth", "⇅", "Depth Chart") + it("practice", "⚙", "Practice") +
       '<div class="ng">Program</div>' + it("offers", "✉", "College Offers", offc || "") + it("feeder", "◎", "Feeder Scouting") + it("staff", "♟", "Coaching Staff") + it("facilities", "▣", "Facilities & Boosters") +
       '<div class="ng">History</div>' + it("news", "✎", "News") + it("records", "★", "Record Book") + it("history", "⌛", "History & Awards") +
-      '<div class="ng">Game</div>' + it("settings", "⚙", "Settings") + it("programs", "⇄", "Programs") + '<button class="ni" data-a="exit"><i>⏻</i>Save & Exit</button></nav>';
+      '<div class="ng">Game</div>' + it("settings", "⚙", "Settings") + it("programs", "⇄", "Programs") + (Cloud.on() ? '<button class="ni" data-a="acct"><i>☺</i>' + (Cloud.signedIn() ? "Account" : "Sign in") + "</button>" : "") + (Cloud.me.admin ? '<button class="ni" data-a="admin"><i>★</i>Admin</button>' : "") + '<button class="ni" data-a="exit"><i>⏻</i>Save & Exit</button></nav>';
   },
   top: function () {
     var t = tm(FR.user), rk = rankOf(FR.user), off = FR.phase === "offseason", adv = off ? "Next step ▸" : FR.phase === "preseason" ? "Kick off season ▸" : "Advance week ▸";
@@ -79,7 +85,7 @@ var FUI = {
   },
   modalHtml: function () {
     var m = FUI.modal; if (!m) return ""; var h = "";
-    if (m.k === "box") h = FUI.mBox(m.g); else if (m.k === "player") h = FUI.mPlayer(m.id); else if (m.k === "team") h = FUI.mTeam(m.id); else if (m.k === "ahead") h = FUI.mAhead(); else if (m.k === "confirm") h = m.html;
+    if (m.k === "box") h = FUI.mBox(m.g); else if (m.k === "player") h = FUI.mPlayer(m.id); else if (m.k === "team") h = FUI.mTeam(m.id); else if (m.k === "ahead") h = FUI.mAhead(); else if (m.k === "confirm") h = m.html; else if (m.k === "acct") h = FUI.mAcct();
     return '<div class="fmod" data-a="close"><div class="fmb" data-a="noop">' + fBtn("✕", "close", "", "ghost mx") + h + "</div></div>";
   },
 
@@ -87,7 +93,15 @@ var FUI = {
   act: function (a, v, n) {
     if (a === "noop") return;
     if (a === "nav" || a === "simto" || a === "slot") FUI.toast = null;
+    if (a.indexOf("adm-") === 0) { FUI.admAct(a, v); return; }
     switch (a) {
+      case "acct": FUI.acct = { mode: v || "in", email: (FUI.acct && FUI.acct.email) || "", pw: "" }; FUI.modal = { k: "acct" }; FUI.render(); return;
+      case "acct-mode": FUI.acct.mode = v; FUI.acct.err = ""; FUI.acct.msg = ""; FUI.render(); return;
+      case "acct-go": FUI.acctGo(); return;
+      case "acct-out": Cloud.signOut().then(function () { FR = null; FUI.modal = null; FUI.page = "programs"; FUI.render(); }); return;
+      case "acct-sync": FUI.acct.msg = ""; FUI.acct.err = ""; Cloud.flushSaves().then(function () { return Cloud.afterSignIn(); }).then(function () { FUI.acct.msg = Cloud.status; FUI.render(); }); return;
+      case "admin": FUI.admOpen(); return;
+      case "unnotice": Cloud.notice = ""; FUI.render(); return;
       case "nav": FUI.go(v); return;
       case "menu": FUI.nav = !FUI.nav; FUI.render(); return;
       case "close": FUI.modal = null; FUI.render(); return;
@@ -136,7 +150,7 @@ var FUI = {
   ensure: function () { if (FR.phase === "preseason") startSeason(); },
   simUser: function () {
     FUI.ensure(); var r = simUserNow(true);
-    if (r) { recordGame(r.g, r.res, FR.week); advanceWeek(); FUI.toastResult(r.g); } else { advanceWeek(); FUI.toast = { x: "Week simulated." }; }
+    if (r) { FR.how = "sim"; recordGame(r.g, r.res, FR.week); advanceWeek(); FUI.toastResult(r.g); } else { advanceWeek(); FUI.toast = { x: "Week simulated." }; }
     if (FR.phase === "offseason") FUI.page = "offseason";
     FUI.render();
   },
@@ -160,7 +174,7 @@ var FUI = {
     var p = w.res.plays[w.i - 1], extra = p && (p.k === "td" || p.k === "to") ? 1.8 : p && (p.k === "q") ? 1.5 : 1;
     FUI.wRender(); FUI.wt = setTimeout(FUI.wTick, [0, 1150, 560, 220, 60][w.sp] * extra);
   },
-  wFinish: function () { var w = FUI.watch; if (!w) return; w.done = true; w.i = w.res.plays.length; if (!w.rec) { w.rec = true; recordGame(w.g, w.res, FR.week); advanceWeek(); FUI.toastResult(w.g); } FUI.wRender(); },
+  wFinish: function () { var w = FUI.watch; if (!w) return; w.done = true; w.i = w.res.plays.length; if (!w.rec) { w.rec = true; FR.how = "watch"; recordGame(w.g, w.res, FR.week); advanceWeek(); FUI.toastResult(w.g); } FUI.wRender(); },
   wClose: function () { var w = FUI.watch; if (!w) return; if (!w.done) FUI.wFinish(); clearTimeout(FUI.wt); FUI.watch = null; if (FR.phase === "offseason") FUI.page = "offseason"; FUI.modal = { k: "box", g: w.g }; FUI.render(); },
   wRender: function () { var o = $("frWatch"); if (!o) { FUI.render(); return; } o.outerHTML = FUI.watchHtml(); },
   watchHtml: function () {
@@ -398,7 +412,7 @@ var FUI = {
   },
   // ---------- programs / new ----------
   pPrograms: function () {
-    var out = '<div class="solohead"><div class="brand"><span class="bl">FRIDAY NIGHT</span><span class="bb">BLITZ</span><small>Franchise · Alabama 5A & 6A</small></div><p>Take over a real Alabama high school program. Build it through the feeder system, move-ins, college offers, staff and facilities. Play the games yourself, watch them, or sim the whole season.</p></div><div class="slots">';
+    var out = '<div class="solohead"><div class="brand"><span class="bl">FRIDAY NIGHT</span><span class="bb">BLITZ</span><small>Franchise · Alabama 5A & 6A</small></div><p>Take over a real Alabama high school program. Build it through the feeder system, move-ins, college offers, staff and facilities. Play the games yourself, watch them, or sim the whole season.</p></div>' + FUI.acctBar() + '<div class="slots">';
     for (var i = 0; i < FR_SLOTS; i++) { var s = frSlotInfo(i);
       if (s) out += '<div class="slot"><div class="slt">' + fBadge({ name: s.name, c1: s.c1, c2: s.c2 }, 54) + "<div><b>" + fx(s.name) + " " + fx(s.mascot) + "</b><small>" + fx(s.coach) + " · " + s.cls + " · " + s.year + " " + (s.phase === "offseason" ? "offseason" : s.phase === "preseason" ? "preseason" : s.phase === "playoffs" ? "playoffs" : "week " + (s.week + 1)) + "</small><small>Career " + s.cw + "-" + s.cl + " · " + s.tt + " state title" + (s.tt === 1 ? "" : "s") + "</small></div></div>" + fBtn("Continue", "slot", i, "pri") + fBtn(FUI.delArm === i ? "Tap again to delete" : "Delete", "delslot", i, "ghost" + (FUI.delArm === i ? " danger" : "")) + "</div>";
       else out += '<div class="slot empty2"><div><b>Slot ' + (i + 1) + "</b><small>Empty</small></div>" + fBtn("New program", "newslot", i, "pri") + "</div>"; }
@@ -456,3 +470,130 @@ var FUI = {
   }
 };
 function bestOfferTier(p) { var b = p.of[0]; p.of.forEach(function (ci) { if (COLLEGES[ci][1] > COLLEGES[b][1]) b = ci; }); return b; }
+
+// ---------- accounts & admin ----------
+function fAgo(t) { if (!t) return "—"; var d = (Date.now() - new Date(t).getTime()) / 1000; if (d < 90) return "just now"; if (d < 3600) return Math.round(d / 60) + "m ago"; if (d < 86400) return Math.round(d / 3600) + "h ago"; if (d < 86400 * 30) return Math.round(d / 86400) + "d ago"; return new Date(t).toLocaleDateString(); }
+function fDate(t) { return t ? new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—"; }
+Object.assign(FUI, {
+  acct: null, adm: null,
+  acctBar: function () {
+    if (!Cloud.on()) return "";
+    var note = Cloud.notice ? '<div class="ftoast2"><b>' + fx(Cloud.notice) + "</b>" + fBtn("✕", "unnotice", "", "sm ghost") + "</div>" : "";
+    if (!Cloud.signedIn()) return note + '<div class="acctbar"><div><b>Playing as a guest</b><span>Sign in to keep your programs in the cloud and pick them up on any device.</span></div>' + fBtn("Sign in", "acct", "in", "pri") + fBtn("Create account", "acct", "up", "") + "</div>";
+    return note + '<div class="acctbar in"><div><b>' + fx(Cloud.email()) + "</b><span>" + (Cloud.busy ? "Syncing…" : fx(Cloud.status || "Signed in")) + "</span></div>" + (Cloud.me.admin ? fBtn("Admin", "admin", "", "pri") : "") + fBtn("Account", "acct", "", "") + "</div>";
+  },
+  mAcct: function () {
+    var a = FUI.acct || (FUI.acct = { mode: "in", email: "", pw: "", msg: "", err: "" });
+    if (Cloud.signedIn() && a.mode !== "newpw") return "<h2>Account</h2><p>Signed in as <b>" + fx(Cloud.email()) + "</b>" + (Cloud.me.admin ? ' <span class="pill gold">Admin</span>' : "") + "</p><p class='fnote'>" + (Cloud.me.banned ? "This account has been disabled. Your programs are saved on this device only." : "Your franchise saves sync to the cloud a few seconds after each change. Open the game on another device and sign in to pick up where you left off.") + " Status: " + fx(Cloud.busy ? "Syncing…" : Cloud.status || "Signed in") + "</p>" +
+      (a.msg ? '<div class="ok">' + fx(a.msg) + "</div>" : "") + (a.err ? '<div class="err">' + fx(a.err) + "</div>" : "") + '<div class="pacts">' + fBtn("Sync now", "acct-sync", "", "") + fBtn("Change password", "acct-mode", "newpw", "ghost") + (Cloud.me.admin ? fBtn("Admin area", "admin", "", "pri") : "") + fBtn("Sign out", "acct-out", "", "ghost danger") + "</div>";
+    var tabs = a.mode === "newpw" ? "" : '<div class="seg">' + fBtn("Sign in", "acct-mode", "in", a.mode === "in" ? "on" : "") + fBtn("Create account", "acct-mode", "up", a.mode === "up" ? "on" : "") + fBtn("Forgot password", "acct-mode", "forgot", a.mode === "forgot" ? "on" : "") + "</div>";
+    var em = a.mode === "newpw" ? "" : '<label class="fl">Email<input data-in="ae" type="email" autocomplete="email" value="' + fx(a.email) + '"></label>';
+    var pw = a.mode === "forgot" ? "" : '<label class="fl">' + (a.mode === "newpw" ? "New password" : "Password") + '<input data-in="ap" type="password" autocomplete="' + (a.mode === "in" ? "current-password" : "new-password") + '" value="' + fx(a.pw) + '"></label>' + (a.mode !== "in" ? "<small class='dim'>At least 6 characters.</small>" : "");
+    var go = { in: "Sign in", up: "Create account", forgot: "Email me a reset link", newpw: "Save new password" }[a.mode];
+    return "<h2>" + (a.mode === "newpw" ? "Set a new password" : "Your account") + "</h2><p class='fnote'>Accounts are optional. Signing in saves your franchise programs to the cloud so you can play on any device. Programs you started as a guest on this device move into your account the first time you sign in.</p>" + tabs +
+      '<div class="aform">' + em + pw + (a.err ? '<div class="err">' + fx(a.err) + "</div>" : "") + (a.msg ? '<div class="ok">' + fx(a.msg) + "</div>" : "") + fBtn(a.busy ? "Working…" : go, "acct-go", "", "pri big", a.busy) + "</div>";
+  },
+  acctGo: function () {
+    var a = FUI.acct, em = (a.email || "").trim(), pw = a.pw || "", p;
+    a.err = ""; a.msg = "";
+    if (a.mode !== "newpw" && !/^\S+@\S+\.\S+$/.test(em)) { a.err = "Enter a valid email."; FUI.render(); return; }
+    if (a.mode !== "forgot" && pw.length < 6) { a.err = "Passwords need at least 6 characters."; FUI.render(); return; }
+    a.busy = true; FUI.render();
+    if (a.mode === "in") p = Cloud.signIn(em, pw).then(function () { if (!Cloud.signedIn()) throw new Error(Cloud.status || "Couldn't sign in."); FUI.afterAuth(); });
+    else if (a.mode === "up") p = Cloud.signUp(em, pw).then(function (r) { if (r === "confirm") { a.mode = "in"; a.msg = "Check " + em + " for a confirmation link. After you click it you'll come back here signed in."; } else FUI.afterAuth(); });
+    else if (a.mode === "forgot") p = Cloud.recover(em).then(function () { a.msg = "If that email has an account, a reset link is on its way."; });
+    else p = Cloud.setPassword(pw).then(function () { a.mode = "in"; a.pw = ""; a.msg = "Password updated."; Cloud.pendingType = ""; if (Cloud.signedIn()) FUI.modal = { k: "acct" }; });
+    p.catch(function (e) { a.err = /invalid login|invalid_grant/i.test(e.message) ? "That email and password don't match." : /already registered|already been registered/i.test(e.message) ? "That email already has an account. Sign in instead." : e.message; })
+      .finally(function () { a.busy = false; FUI.render(); });
+  },
+  afterAuth: function () { FR = null; FUI.acct = { mode: "in", email: "", pw: "" }; FUI.modal = null; FUI.page = "programs"; FUI.toast = null; },
+  cloudChanged: function () { if (UI.screen === "fr" && !FUI.watch) { if (FR && FR.scope !== undefined && FR.scope !== Cloud.scope()) { FR = null; FUI.page = "programs"; } var ae = document.activeElement; if (ae && ae.tagName === "INPUT" && FUI.modal) return; FUI.render(); } },
+
+  // ---- admin ----
+  admOpen: function () {
+    if (!Cloud.me.admin) return; FUI.adm = FUI.adm || { tab: "overview", lgCls: "6A", arm: "" }; FUI.page = "admin"; FUI.modal = null; FUI.nav = false; FUI.render(); FUI.admLoad();
+  },
+  admLoad: function () {
+    var A = FUI.adm; A.loading = true; A.err = ""; FUI.render();
+    Promise.all([Cloud.rpc("admin_totals"), Cloud.rpc("admin_daily", { p_days: 30 }), Cloud.rpc("admin_users")]).then(function (r) { A.totals = r[0]; A.daily = r[1] || []; A.users = r[2] || []; A.at = Date.now(); })
+      .catch(function (e) { A.err = e.message; }).finally(function () { A.loading = false; FUI.render(); });
+  },
+  pAdmin: function () {
+    var A = FUI.adm; if (!A || !Cloud.me.admin) return fEmpty("Admins only.");
+    var tabs = '<div class="seg">' + [["overview", "Overview"], ["accounts", "Accounts"], ["league", "League editor"]].map(function (t) { return fBtn(t[1], "adm-tab", t[0], A.tab === t[0] ? "on" : ""); }).join("") + "</div>";
+    var head = '<div class="solohead"><div class="admtop"><div><small class="dim">Friday Night Blitz</small><h1>Admin</h1></div><div class="pacts">' + fBtn(A.loading ? "Loading…" : "↻ Refresh", "adm-load", "", "", A.loading) + fBtn("◀ Back to game", "adm-back", "", "ghost") + "</div></div>" + tabs + (A.err ? '<div class="err">' + fx(A.err) + "</div>" : "") + "</div>";
+    if (A.tab === "league") return head + FUI.admLeague();
+    if (!A.totals) return head + fEmpty(A.loading ? "Loading…" : "No data yet.");
+    return head + (A.tab === "accounts" ? FUI.admAccounts() : FUI.admOverview());
+  },
+  admOverview: function () {
+    var A = FUI.adm, t = A.totals, d = A.daily, k = function (lbl, v, sub, ac) { return '<div class="kpi' + (ac ? " ac" : "") + '"><small>' + lbl + "</small><b>" + v + "</b><span>" + sub + "</span></div>"; };
+    var kp = '<div class="kpis">' + k("Players today", t.players_today, "accounts + guests", 1) + k("Players, 7 days", t.players_7d, "distinct") + k("Players, 30 days", t.players_30d, t.guests_30d + " guests") + k("Accounts", t.accounts, t.new_7d + " new this week" + (t.banned ? " · " + t.banned + " disabled" : "")) +
+      k("Games, 7 days", t.games_7d, t.games_all + " all time") + k("Seasons finished", t.seasons_all, "franchise") + k("Cloud saves", t.cloud_saves, "programs") + "</div>";
+    var bars = function (title, key, col) { var mx = Math.max.apply(null, d.map(function (r) { return +r[key]; }).concat([1])); return fCard(title, '<div class="bars">' + d.map(function (r) { var v = +r[key]; return '<div class="bar" title="' + fx(r.day) + ": " + v + '"><i style="height:' + Math.max(v ? 3 : 0, v / mx * 100) + "%;background:" + col + '"></i></div>'; }).join("") + '</div><div class="barx"><span>' + fx(d.length ? fDate(String(d[0].day).slice(0, 10) + "T12:00:00") : "") + "</span><span>Today</span></div>", { right: '<span class="pill">max ' + mx + "/day</span>" }); };
+    var sum = function (key) { var s = 0; d.forEach(function (r) { s += +r[key]; }); return s; };
+    var g = sum("games") || 1, split = function (lbl, v) { return '<div class="split"><span>' + lbl + "</span><div class='mtr'><span style='width:" + fPct(v, g) + "%'></span></div><b>" + v + " · " + fPct(v, g) + "%</b></div>"; };
+    var schools = {}; (A.users || []).forEach(function (u) { (u.saves || []).forEach(function (s) { if (s.summary && s.summary.name) schools[s.summary.name] = (schools[s.summary.name] || 0) + 1; }); });
+    var top = Object.keys(schools).sort(function (a, b) { return schools[b] - schools[a]; }).slice(0, 10);
+    return kp + '<div class="fgrid g2">' + bars("Players per day · last 30 days", "players", "var(--ac)") + bars("Games per day · last 30 days", "games", "#22c55e") + bars("New accounts per day", "signups", "#f5b301") +
+      fCard("How games get played · last 30 days", split("Franchise", sum("franchise")) + split("Quick game", sum("quick")) + "<hr>" + split("Played in 16-bit", sum("played")) + split("Watched broadcast", sum("watched")) + split("Simmed", sum("simmed"))) +
+      fCard("Most-picked schools (cloud saves)", top.length ? top.map(function (n, i) { return '<div class="seedr"><span class="pr">' + (i + 1) + "</span><b>" + fx(n) + "</b><small>" + schools[n] + " program" + (schools[n] > 1 ? "s" : "") + "</small></div>"; }).join("") : fEmpty("No cloud saves yet.")) + "</div>" +
+      '<p class="fnote">Guests are counted by an anonymous browser ID. Times use Central time. Updated ' + fAgo(A.at) + ".</p>";
+  },
+  admAccounts: function () {
+    var A = FUI.adm, us = A.users || [];
+    var rows = us.map(function (u) {
+      var progs = (u.saves || []).map(function (s) { var m = s.summary || {}; return '<span class="prog">' + (m.c1 ? fBadge({ name: m.name || "?", c1: m.c1, c2: m.c2 || "#fff" }, 18) : "") + fx(m.name || "?") + " <small>" + fx((m.year || "") + " · " + (m.w || 0) + "-" + (m.l || 0) + (m.tt ? " · " + m.tt + " title" + (m.tt > 1 ? "s" : "") : "")) + "</small></span>"; }).join("") || '<span class="dim">No cloud programs</span>';
+      var arm = function (k) { return A.arm === k + u.id; };
+      var open = A.sel === u.id, ev = A.ev && A.ev[u.id];
+      var detail = open ? '<tr class="det"><td colspan="7">' + (ev ? (ev.length ? '<table class="ft"><tr><th>When</th><th>Event</th><th>Details</th></tr>' + ev.map(function (e) { var dd = e.detail || {}; return "<tr><td>" + fx(fAgo(e.created_at)) + "</td><td>" + fx(e.kind) + "</td><td>" + fx([dd.mode, dd.how, dd.school, dd.opp ? "vs " + dd.opp : "", dd.res, dd.year].filter(Boolean).join(" · ")) + "</td></tr>"; }).join("") + "</table>" : fEmpty("No activity recorded.")) : fEmpty("Loading…")) + "</td></tr>" : "";
+      return '<tr class="arow" data-q="' + fx((u.email + " " + (u.coach_name || "")).toLowerCase()) + '"><td><b>' + fx(u.email) + "</b><br><small class='dim'>" + fx(u.coach_name || "") + "</small></td><td>" + fDate(u.created_at) + "</td><td>" + fAgo(u.last_seen) + "</td><td>" + u.games_7d + " <small class='dim'>/ " + u.games + "</small></td><td class='progs'>" + progs + "</td><td>" + (u.banned ? '<span class="pill l">Disabled</span>' : '<span class="pill ac">Active</span>') + "</td><td class='acts'>" +
+        fBtn(open ? "Hide" : "Activity", "adm-sel", u.id, "sm ghost") + fBtn(arm("ban") ? "Confirm" : u.banned ? "Enable" : "Disable", "adm-ban", u.id, "sm" + (arm("ban") ? " danger" : "")) + fBtn(arm("reset") ? "Confirm wipe" : "Reset saves", "adm-reset", u.id, "sm ghost" + (arm("reset") ? " danger" : ""), !(u.saves || []).length) + "</td></tr>" + detail;
+    }).join("");
+    return '<div class="ph2"><p>' + us.length + ' accounts. "Disable" stops an account from saving to the cloud. "Reset saves" deletes its cloud programs and clears them from every device the next time the player opens the game.</p><input class="asearch" data-in="aq" placeholder="Search email or coach name" value="' + fx(A.q || "") + '"></div>' +
+      fCard("", '<table class="ft big atbl"><tr><th>Account</th><th>Joined</th><th>Last seen</th><th>Games 7d / all</th><th>Programs</th><th>Status</th><th></th></tr>' + (rows || '<tr><td colspan="7">' + fEmpty("No accounts yet.") + "</td></tr>") + "</table>");
+  },
+  admFilter: function () { var q = (FUI.adm.q || "").toLowerCase(); document.querySelectorAll("#fr .arow").forEach(function (r) { r.style.display = !q || r.getAttribute("data-q").indexOf(q) >= 0 ? "" : "none"; }); },
+  admLeague: function () {
+    var A = FUI.adm; if (!A.lg) { A.lg = leagueList(); A.dirty = false; }
+    var errs = leagueValidate(A.lg), c = A.lgCls, sh = LEAGUE_SHAPE[c], meta = AL_LEAGUE_META;
+    var live = meta ? "Live league: edited by " + fx(meta.updated_by || "admin") + " on " + fDate(meta.updated_at) + "." : "Live league: the built-in AHSAA 2026-28 alignment.";
+    var top = '<div class="ph2"><p>' + live + " Changes go live for new franchises and quick games when you publish. Existing programs keep the league they started with.</p>" +
+      '<div class="pacts">' + '<div class="seg">' + ["6A", "5A"].map(function (x) { return fBtn("Class " + x + " · " + A.lg.filter(function (s) { return s.cls === x; }).length, "adm-lcls", x, x === c ? "on" : ""); }).join("") + "</div>" +
+      fBtn(A.busy ? "Publishing…" : "Publish changes", "adm-pub", "", "pri", !!errs.length || !A.dirty || A.busy) + fBtn("Discard edits", "adm-disc", "", "ghost", !A.dirty) + fBtn(A.arm === "restore" ? "Confirm restore" : "Restore built-in league", "adm-restore", "", "ghost" + (A.arm === "restore" ? " danger" : ""), !meta && !A.dirty) + "</div>" +
+      (A.lmsg ? '<div class="ok">' + fx(A.lmsg) + "</div>" : "") + (errs.length ? '<div class="err"><b>Fix these before publishing:</b><ul>' + errs.slice(0, 12).map(function (e) { return "<li>" + fx(e) + "</li>"; }).join("") + (errs.length > 12 ? "<li>…and " + (errs.length - 12) + " more</li>" : "") + "</ul></div>" : "") + "</div>";
+    var regOpts = function (cls, r) { var o = ""; for (var i = 1; i <= LEAGUE_SHAPE[cls].regions; i++) o += '<option value="' + i + '"' + (i === r ? " selected" : "") + ">Region " + i + "</option>"; return o; };
+    var out = top + '<div class="fgrid g2">';
+    for (var r = 1; r <= sh.regions; r++) {
+      var rows = ""; A.lg.forEach(function (s, i) { if (s.cls !== c || s.reg !== r) return;
+        rows += '<tr><td>' + fBadge({ name: s.n || "?", c1: /^#[0-9a-f]{6}$/i.test(s.c1) ? s.c1 : "#333333", c2: /^#[0-9a-f]{6}$/i.test(s.c2) ? s.c2 : "#ffffff" }, 26) + '</td><td><input class="li ln1" data-lg="' + i + '|n" value="' + fx(s.n) + '"><input class="li ln2" data-lg="' + i + '|m" value="' + fx(s.m) + '"></td><td><input class="li ab" data-lg="' + i + '|a" value="' + fx(s.a) + '" maxlength="4"></td><td class="cols"><input type="color" data-lg="' + i + '|c1" value="' + fx(s.c1) + '"><input type="color" data-lg="' + i + '|c2" value="' + fx(s.c2) + '"></td><td><input class="li pn" type="number" min="0" max="99" data-lg="' + i + '|p" value="' + s.p + '"></td><td><select data-lgs="' + i + '|cls"><option' + (s.cls === "6A" ? " selected" : "") + ">6A</option><option" + (s.cls === "5A" ? " selected" : "") + '>5A</option></select><select data-lgs="' + i + '|reg">' + regOpts(s.cls, s.reg) + "</select></td><td>" + fBtn("✕", "adm-del", i, "xs ghost") + "</td></tr>"; });
+      var n = A.lg.filter(function (s) { return s.cls === c && s.reg === r; }).length;
+      out += fCard(c + " Region " + r + ' <small class="' + (n < sh.min ? "l" : "dim") + '">' + n + " schools</small>", '<div class="tscroll"><table class="ft lgt"><tr><th></th><th>School / mascot</th><th>Abbr</th><th>Colors</th><th>Prestige</th><th>Class / region</th><th></th></tr>' + rows + "</table></div>" + fBtn("+ Add school", "adm-add", c + "|" + r, "sm ghost"));
+    }
+    return out + "</div>";
+  },
+  admAct: function (a, v) {
+    var A = FUI.adm, u = (A.users || []).filter(function (x) { return x.id === v; })[0];
+    if (a === "adm-tab") { A.tab = v; A.arm = ""; FUI.render(); return; }
+    if (a === "adm-load") { FUI.admLoad(); return; }
+    if (a === "adm-back") { FUI.page = FR && FR.user >= 0 ? (FR.phase === "offseason" ? "offseason" : "home") : "programs"; FUI.render(); return; }
+    if (a === "adm-sel") { A.sel = A.sel === v ? null : v; A.ev = A.ev || {}; FUI.render(); if (A.sel) Cloud.rpc("admin_user_events", { p_user: v, p_limit: 40 }).then(function (r) { A.ev[v] = r || []; FUI.render(); }).catch(function (e) { A.err = e.message; FUI.render(); }); return; }
+    if (a === "adm-ban") { if (A.arm !== "ban" + v) { A.arm = "ban" + v; FUI.render(); return; } A.arm = ""; Cloud.rpc("admin_set_ban", { p_user: v, p_banned: !u.banned }).then(function () { u.banned = !u.banned; }).catch(function (e) { A.err = e.message; }).finally(function () { FUI.render(); }); return; }
+    if (a === "adm-reset") { if (A.arm !== "reset" + v) { A.arm = "reset" + v; FUI.render(); return; } A.arm = ""; Cloud.rpc("admin_reset", { p_user: v }).then(function () { u.saves = []; }).catch(function (e) { A.err = e.message; }).finally(function () { FUI.render(); }); return; }
+    if (a === "adm-lcls") { A.lgCls = v; FUI.render(); return; }
+    if (a === "adm-add") { var pr = v.split("|"); A.lg.push({ n: "New School", m: "Mascots", a: "NEW", c1: "#1f4fd8", c2: "#ffffff", p: 40, cls: pr[0], reg: +pr[1] }); A.dirty = true; A.lmsg = ""; FUI.render(); return; }
+    if (a === "adm-del") { A.lg.splice(+v, 1); A.dirty = true; A.lmsg = ""; FUI.render(); return; }
+    if (a === "adm-disc") { A.lg = null; A.lmsg = ""; FUI.render(); return; }
+    if (a === "adm-pub") { if (leagueValidate(A.lg).length) return; A.busy = true; FUI.render(); Cloud.publishLeague(A.lg.map(function (s) { return { n: s.n.trim(), m: s.m.trim(), a: s.a.trim().toUpperCase(), c1: s.c1.toLowerCase(), c2: s.c2.toLowerCase(), p: Math.round(+s.p), cls: s.cls, reg: +s.reg }; }))
+      .then(function () { A.dirty = false; A.lg = null; A.lmsg = "Published. New franchises and quick games now use this league."; }).catch(function (e) { A.err = "Publish failed: " + e.message; }).finally(function () { A.busy = false; FUI.render(); }); return; }
+    if (a === "adm-restore") { if (A.arm !== "restore") { A.arm = "restore"; FUI.render(); return; } A.arm = ""; A.busy = true; Cloud.resetLeague().then(function () { A.lg = null; A.dirty = false; A.lmsg = "Restored the built-in AHSAA 2026-28 league."; }).catch(function (e) { A.err = e.message; }).finally(function () { A.busy = false; FUI.render(); }); return; }
+  },
+  lgInput: function (n, live) {
+    var A = FUI.adm, pr = (n.getAttribute("data-lg") || n.getAttribute("data-lgs")).split("|"), s = A.lg[+pr[0]], f = pr[1], v = n.value;
+    if (!s) return; if (f === "p" || f === "reg") v = +v; if (f === "a") v = v.toUpperCase();
+    if (f === "cls" && v !== s.cls) { s.cls = v; s.reg = Math.min(s.reg, LEAGUE_SHAPE[v].regions); } else s[f] = v;
+    A.dirty = true; A.lmsg = ""; if (!live) FUI.render();
+  }
+});
+
+Cloud.listeners.push(function () { FUI.cloudChanged(); });

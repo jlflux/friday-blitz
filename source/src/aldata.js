@@ -45,3 +45,47 @@ var TIER_NAME = ["NAIA/D3", "D2", "FCS", "G5", "Power 4"];
 var TIER_BONUS = [1500, 3000, 6000, 12000, 25000];
 var COACH_FIRST = ["Mike", "Steve", "Jeff", "Brian", "Chris", "Rodney", "Kevin", "Scott", "Darrell", "Jamie", "Tim", "Rusty", "Josh", "Bryan", "Marcus", "Andy", "Greg", "Corey", "Lance", "Tony", "Derrick", "Ken", "Matt", "Wade"];
 var COACH_LAST = ["Sims", "Holloway", "Pettus", "Vickers", "Lamb", "Tolbert", "Crane", "Hatcher", "Ogburn", "Wilder", "Stalls", "Prewitt", "Banks", "Dorsey", "Kimbrough", "Gamble", "McCrary", "Strickland", "Tidwell", "Hollis", "Burkett", "Crowder", "Mayes", "Fortner"];
+
+// ---------- league overrides (published from the admin area) ----------
+var AL_DEFAULT = JSON.parse(JSON.stringify(AL_LEAGUE)), AL_LEAGUE_META = null;
+var LEAGUE_SHAPE = { "6A": { regions: 4, min: 6 }, "5A": { regions: 8, min: 4 } };
+function leagueList(al) { // AL_LEAGUE-style rows -> editable list
+  var out = []; ["6A", "5A"].forEach(function (cls) { (al || AL_LEAGUE)[cls].forEach(function (reg, ri) { reg.forEach(function (row) { var f = row.split("|");
+    out.push({ n: f[0], m: f[1], a: f[2], c1: f[3], c2: f[4], p: +f[5], cls: cls, reg: ri + 1 }); }); }); });
+  return out;
+}
+function leagueValidate(list) {
+  var errs = [], names = {}, hex = /^#[0-9a-fA-F]{6}$/;
+  if (!list || !list.length) return ["The league is empty."];
+  list.forEach(function (s, i) {
+    var lbl = (s.n || "School #" + (i + 1));
+    if (!s.n || s.n.length < 2 || s.n.length > 30 || /\|/.test(s.n)) errs.push(lbl + ": name must be 2-30 characters.");
+    if (!s.m || s.m.length > 24 || /\|/.test(s.m)) errs.push(lbl + ": mascot is required (up to 24 characters).");
+    if (!/^[A-Z0-9.&-]{2,4}$/.test(s.a || "")) errs.push(lbl + ": abbreviation must be 2-4 capital letters.");
+    if (!hex.test(s.c1 || "") || !hex.test(s.c2 || "")) errs.push(lbl + ": colors must be hex like #c8102e.");
+    if (!(s.p >= 0 && s.p <= 99)) errs.push(lbl + ": prestige must be 0-99.");
+    if (!LEAGUE_SHAPE[s.cls]) errs.push(lbl + ": class must be 5A or 6A.");
+    else if (!(s.reg >= 1 && s.reg <= LEAGUE_SHAPE[s.cls].regions)) errs.push(lbl + ": " + s.cls + " region must be 1-" + LEAGUE_SHAPE[s.cls].regions + ".");
+    var k = (s.n || "").toLowerCase(); if (names[k]) errs.push(lbl + ": two schools have this name."); names[k] = 1;
+  });
+  for (var cls in LEAGUE_SHAPE) for (var r = 1; r <= LEAGUE_SHAPE[cls].regions; r++) {
+    var n = list.filter(function (s) { return s.cls === cls && s.reg === r; }).length;
+    if (n < LEAGUE_SHAPE[cls].min) errs.push(cls + " Region " + r + " has " + n + " schools; it needs at least " + LEAGUE_SHAPE[cls].min + " for the playoff bracket.");
+    if (n > 12) errs.push(cls + " Region " + r + " has " + n + " schools; the most a region can hold is 12.");
+  }
+  return errs;
+}
+function leagueToAL(list) {
+  if (leagueValidate(list).length) return null;
+  var al = { "6A": [], "5A": [] };
+  for (var cls in LEAGUE_SHAPE) for (var r = 1; r <= LEAGUE_SHAPE[cls].regions; r++) al[cls].push(list.filter(function (s) { return s.cls === cls && s.reg === r; }).map(function (s) { return [s.n, s.m, s.a, s.c1, s.c2, Math.round(s.p)].join("|"); }));
+  return al;
+}
+function leagueApply(row) { // row = { data: { schools: [...] }, updated_at, updated_by } or null for the built-in league
+  var al = row ? leagueToAL(row.data && row.data.schools) : JSON.parse(JSON.stringify(AL_DEFAULT));
+  if (!al) return false;
+  AL_LEAGUE["6A"] = al["6A"]; AL_LEAGUE["5A"] = al["5A"]; AL_LEAGUE_META = row ? { updated_at: row.updated_at, updated_by: row.updated_by } : null;
+  if (typeof rebuildSchools === "function") rebuildSchools();
+  return true;
+}
+(function () { try { var c = localStorage.getItem("fnb_league"); if (c) leagueApply(JSON.parse(c)); } catch (e) {} })();

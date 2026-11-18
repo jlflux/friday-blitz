@@ -15,8 +15,25 @@ A 16-bit high school football game with 11 players a side, a Mode 7 behind-the-t
   - **Program:** hire an OC, DC, strength coach and player development coach, each with ratings and traits; good ones get poached when you win. Upgrade five facilities (weight room, film room, stadium, practice fields, locker room) with booster money from gates, weekly giving, playoff runs and Signing Day.
   - **History:** news feed, weekly 5A and 6A top 10 polls, league leaders, a school record book, season-by-season history, coach career stats, and yearly awards (Mr. Football, Players and Linemen of the Year, Coaches of the Year, All-State and All-Region).
   - **Offseason:** awards, Signing Day, graduation, coaching staff, facilities, freshman class, move-ins, summer training, then the new season.
-  - **Saves:** three save slots, stored in your browser.
+  - **Saves:** three save slots, stored in your browser, and in the cloud when you're signed in.
 - **Quick game:** an exhibition between any two of the 95 real schools, with editable rosters.
+
+## Accounts and the admin area
+Accounts are optional. Guests can play right away. Signing in saves franchise programs to the cloud so they follow the player to any device, and programs started as a guest move into the account on the first sign-in. Accounts and data are handled by [Supabase](https://supabase.com); until it's connected, the game runs exactly as before with no sign-in button.
+
+The admin area (an **Admin** button that only admins see, on the Programs screen and in the sidebar) has three tabs:
+- **Overview:** players today, over 7 days and over 30 days (accounts plus anonymous guests), accounts and new sign-ups, games played, seasons finished, daily charts, franchise vs quick game, played vs watched vs simmed, and the most-picked schools.
+- **Accounts:** every account with join date, last seen, games, and each cloud program (school, season, record, titles). You can search, view recent activity, disable an account (it can't save to the cloud), or reset its saves (they're deleted from the cloud and cleared from the player's devices the next time they open the game).
+- **League editor:** edit any school's name, mascot, abbreviation, colors, prestige, class and region, or add and remove schools. It checks that 6A still has 4 regions of at least 6 schools and 5A has 8 regions of at least 4 before it lets you publish. Published changes apply to new franchises and quick games; existing programs keep the league they started with. **Restore built-in league** goes back to the AHSAA 2026-28 alignment.
+
+### One-time Supabase setup
+1. Create a free project at supabase.com.
+2. Open **SQL Editor → New query**, paste all of `supabase/schema.sql`, change `YOUR-EMAIL@example.com` at the bottom to your email, and press **Run**.
+3. In **Authentication → URL Configuration**, set **Site URL** to the game's Vercel address and add the same address under **Redirect URLs**. This is where confirmation and password-reset emails send people back to.
+4. In **Project Settings → API**, copy the **Project URL** and the **anon / publishable** key into `CLOUD_URL` and `CLOUD_KEY` at the top of `source/src/cloud.js`, rebuild, and copy the build to `index.html`. The anon key is designed to be public; the database's row-level security rules decide who can read and change what.
+5. Open the game, create an account with the email from step 2, and the Admin button appears.
+
+Supabase's built-in email sender only sends a few emails an hour. That's fine for testing; for real traffic, add your own SMTP under **Authentication → Emails**, or turn off **Confirm email** under **Authentication → Providers → Email** to skip confirmation.
 
 ## Controls
 - Drag anywhere (or use the arrow keys / WASD) to move the player you control. Up is always toward the top of your screen.
@@ -43,7 +60,8 @@ cp dist/friday-night-blitz-v01.html ../index.html
 - `render.js`: the Mode 7 and overhead pixel renderers
 - `aldata.js`: the real 5A/6A schools (names, mascots, colors, regions) and the college list
 - `league.js`: the franchise league model, play-by-play sim, schedule, playoffs, offers, feeder, move-ins, staff, facilities, records and saves
-- `fui.js`: the franchise dashboard UI
+- `fui.js`: the franchise dashboard, account screens and admin area
+- `cloud.js`: Supabase sign-in, cloud saves, activity tracking and published league edits
 - `ui.js`: menus, team editor, HUD and end card
 - `teams.js`: quick-play schools and rosters
 - `gfx.js`: pixel font and sprites

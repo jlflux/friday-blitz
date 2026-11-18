@@ -70,7 +70,10 @@ var App = {
     if (HOST) { HOST.onUpdate = App.onHostUpdate; HOST.onCommand = App.onHostCommand; }
     if ("tune" in QS) App.buildTune();
     window.__game = GAME_API;
-    if (TEST) window.__fr = { get FR() { return FR; }, tm: tm, PL: PL, teamPlayers: teamPlayers, money: money, OFF_STEPS: OFF_STEPS, App: App, FUI: FUI };
+    Cloud.init();
+    if (Cloud.pendingType === "recovery") { FUI.acct = { mode: "newpw", email: "", pw: "" }; FUI.open(); FUI.modal = { k: "acct" }; FUI.render(); }
+    else if (Cloud.pendingType === "signup" || Cloud.pendingType === "magiclink") { FUI.open(); }
+    if (TEST) window.__fr = { Cloud: Cloud, get FR() { return FR; }, tm: tm, PL: PL, teamPlayers: teamPlayers, money: money, OFF_STEPS: OFF_STEPS, App: App, FUI: FUI };
     requestAnimationFrame(App.frame);
     if (HOST && typeof HOST.ready === "function") { try { HOST.ready(); } catch (e) {} }
   },
@@ -128,7 +131,7 @@ var App = {
     var ctx = App.frCtx; if (!ctx || !G) return; App.frCtx = null;
     var us = G.score.H, them = G.score.A, hs = ctx.userHome ? us : them, as = ctx.userHome ? them : us;
     if (hs === as) { if (G.rng() < 0.5) hs += 3; else as += 3; }
-    var res = engineResult(ctx.g, G.stats, ctx.idsU, ctx.idsO, hs, as);
+    var res = engineResult(ctx.g, G.stats, ctx.idsU, ctx.idsO, hs, as); FR.how = ctx.bot ? "bot" : "play";
     recordGame(ctx.g, res, FR.week); advanceWeek(); FUI.toastResult(ctx.g);
     if (FR.phase === "offseason") FUI.page = "offseason";
     App.toFranchise();
@@ -141,7 +144,7 @@ var App = {
   },
   pause: function (on) { App.paused = on; $("pause").classList.toggle("hidden", !on); audioSuspend(on); },
   showEnd: function () {
-    if (!App.recorded) { App.recorded = true; if (!App.frCtx) { if (G.outcome === "win") App.save.w++; else if (G.outcome === "lose") App.save.l++; else App.save.t++; } App.persist();
+    if (!App.recorded) { App.recorded = true; if (!App.frCtx && !G.attract) Cloud.track("game", { mode: "quick", how: G.bot ? "bot" : "play", school: App.home.name, opp: App.away.name, res: (G.score.H > G.score.A ? "W " : G.score.H < G.score.A ? "L " : "T ") + G.score.H + "-" + G.score.A }); if (!App.frCtx) { if (G.outcome === "win") App.save.w++; else if (G.outcome === "lose") App.save.l++; else App.save.t++; } App.persist();
       sfx(G.outcome === "win" ? "win" : "lose"); notifyGameEnd(G.outcome === "win" ? "win" : G.outcome === "tie" ? "lose" : G.outcome); }
     App.st = "end"; crowdStop(); UI.showEnd();
   },
